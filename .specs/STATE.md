@@ -34,8 +34,8 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 - [x] Phase 2 — Channels (T4-T9) — commits 31013e9, 8bd7f7f, fea3cd6, ab9ead7, 35bcb0e, f1e364d; 37 unit tests pass. Per-adapter registry entries (ntfyRegistryEntry…), ChannelBuilder.buildActive static, FetchHttpClient handles string+object bodies. ChannelRegistryEntry gained optional maxLength.
 - [x] Phase 3 — Queue/dispatch/delivery (T10-T13) — commits 38eb283, 1cfd815, 3bba4b9, 246118d; 53 unit tests pass. InMemoryQueue.deliveries[] = partial-failure seam. DispatchService({queue,logger,activeChannels,resolveProfile}); DeliveryService({channels:Map,clock,logger}); BullMqQueue({redisUrl,retry}). Added package.json overrides.ioredis=$ioredis (BullMQ TS fix).
 - [x] Phase 4 — API + wiring + integration (T14-T18) — commits f7a0162, ec7ad20, 4ad862b, 6a019c4, fd4bd75; 79 tests pass (unit+e2e+integration). buildContainer(config,overrides?)→{queue,buildServerDeps(),registerWorkers(),close()}. channel-registry.ts exports channelRegistry + requiredConfigByChannel (ntfy/telegram/email/slack/discord). Fan-out integration test proves partial-failure isolation. ⚠️ BUILD PATH: tsconfig rootDir="." emits dist/src/bin/*.js but start scripts point to dist/bin/*.js — Phase 5 (T19 docker) MUST reconcile. /health is unauthenticated (for compose healthcheck).
-- [ ] Phase 5 — Docker + hook + docs + T22/T24 (T19-T24)
-- [ ] Verifier
+- [x] Phase 5 — Docker + hook + docs + T22/T24 (T19-T24) — commits 9d04f8a, e67b5a6, d3f8bdb, 7ed2ca0, 2b5b1ee, 547e54c; 106 tests pass. tsconfig rootDir=src→dist/bin/*.js. REAL docker smoke PASSED (health 200 redis:true, /notify 202, ntfy delivery confirmed on ntfy.sh side). vitest include gained clients/**/*.test.mjs.
+- [ ] Verifier (in progress)
 
 **Phase 1 notes:** ESM + TS (NodeNext, strict), Vitest. TOKENS format = `name:token:ch1,ch2` entries separated by `;`. `requiredConfigByChannel: Record<string,string[]>` is the DI seam the channel registry (T4) must populate for loadConfig fail-fast. Deps bumped for security: nodemailer@9.0.3, vitest@4.1.10 (npm audit clean).
 
