@@ -204,3 +204,50 @@ describe('GET /health', () => {
     expect(res.json()).toEqual({ status: 'ok', redis: false })
   })
 })
+
+describe('GET /channels', () => {
+  it('returns 200 with the active channels and the token profile defaults', async () => {
+    // activeChannelNames deliberately differs from the profile's defaultChannels
+    // so the assertion can't pass by accident if the two fields were swapped.
+    const narrowProfile = { name: 'phone', token: TOKEN, defaultChannels: ['ntfy'] }
+    const { app } = makeApp({
+      tokenResolver: createTokenResolver([narrowProfile]),
+      activeChannelNames: ['ntfy', 'telegram', 'email']
+    })
+    current = app
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/channels',
+      headers: { authorization: `Bearer ${TOKEN}` }
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({
+      channels: ['ntfy', 'telegram', 'email'],
+      defaultChannels: ['ntfy']
+    })
+  })
+
+  it('returns 401 when the Authorization header is missing', async () => {
+    const { app } = makeApp()
+    current = app
+
+    const res = await app.inject({ method: 'GET', url: '/channels' })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('returns 401 for an unknown Bearer token', async () => {
+    const { app } = makeApp()
+    current = app
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/channels',
+      headers: { authorization: 'Bearer not-a-real-token' }
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+})

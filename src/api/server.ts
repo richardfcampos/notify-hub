@@ -6,6 +6,7 @@
  */
 import Fastify, { type FastifyInstance } from 'fastify'
 import type { Logger, QueuePort, TokenResolver } from '../core/ports.js'
+import { registerChannelsRoute } from './routes/channels.js'
 import { registerHealthRoute } from './routes/health.js'
 import { registerNotifyRoute } from './routes/notify.js'
 
@@ -25,6 +26,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   registerHealthRoute(app, deps)
   registerNotifyRoute(app, deps)
+  registerChannelsRoute(app, deps)
 
   return app
 }
