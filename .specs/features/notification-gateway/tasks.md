@@ -9,7 +9,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 ---
 
 **Design**: `.specs/features/notification-gateway/design.md`
-**Status**: Draft (awaiting task approval)
+**Status**: In Progress
 
 ---
 
@@ -91,43 +91,43 @@ T2  → T20 ├→ T21 → T23
 
 ## Task Breakdown
 
-### T1: Project scaffold
+### T1: Project scaffold ✅
 **What**: Node/TS project skeleton — `package.json` (scripts: `build`,`test`,`test:unit`,`start:api`,`start:worker`), `tsconfig.json`, `vitest.config.ts`, dir tree (`src/`, `test/`, `clients/`), `.gitignore`, `.env.example` (all env keys), `.dockerignore`.
 **Where**: repo root + `src/`, `test/`
 **Depends on**: None
 **Requirement**: NOTIF-12 (partial)
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] `npm install` succeeds; `npm run build` (tsc noEmit or emit) passes with no errors
-- [ ] `.env.example` lists every env key referenced by design (PORT, REDIS_URL, TOKENS, CHANNELS_ENABLED, per-channel creds, RETRY_*)
-- [ ] `.gitignore` excludes `.env`, `node_modules`, `dist`
+- [x] `npm install` succeeds; `npm run build` (tsc noEmit or emit) passes with no errors
+- [x] `.env.example` lists every env key referenced by design (PORT, REDIS_URL, TOKENS, CHANNELS_ENABLED, per-channel creds, RETRY_*)
+- [x] `.gitignore` excludes `.env`, `node_modules`, `dist`
 **Tests**: none · **Gate**: build
 **Commit**: `chore: scaffold notify-hub project`
 
-### T2: Domain types + port interfaces
+### T2: Domain types + port interfaces ✅
 **What**: All TS contracts — `Notification`, `DeliveryResult`, `Priority`, `Profile`, `AppConfig`, `DispatchJob`, `DeliveryJob`, `NotificationChannel`, `ChannelDeps`, `ChannelFactory`, `ChannelRegistryEntry`, and ports `HttpClient`, `MailTransport`, `QueuePort`, `TokenResolver`, `Clock`, `Logger`.
 **Where**: `src/core/types.ts`, `src/core/ports.ts`
 **Depends on**: T1
 **Requirement**: NOTIF-01,03,11 (contracts)
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] All interfaces from design "Core Interfaces" exported
-- [ ] `npm run build` passes; no `any` on public contracts
+- [x] All interfaces from design "Core Interfaces" exported
+- [x] `npm run build` passes; no `any` on public contracts
 **Tests**: none · **Gate**: build
 **Commit**: `feat(core): define domain types and ports`
 
-### T3: Config loader (zod + fail-fast)
+### T3: Config loader (zod + fail-fast) ✅
 **What**: `loadConfig(env, requiredConfigByChannel)` — parse/validate env → `AppConfig`; parse `TOKENS` into profiles; fail fast with channel+key name when an enabled channel lacks a required credential.
 **Where**: `src/config/load-config.ts` (+ `.test.ts`)
 **Depends on**: T2
 **Requirement**: NOTIF-10, NOTIF-11
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Enabled channel missing a required key → throws Error naming channel + key (AC NOTIF-10.2)
-- [ ] Unknown channel in `CHANNELS_ENABLED` → throws
-- [ ] `TOKENS` parsed into `Profile[]` with `defaultChannels`
-- [ ] Happy path returns typed `AppConfig`
-- [ ] Unit tests cover all above; `npm run test:unit` passes; test count recorded
+- [x] Enabled channel missing a required key → throws Error naming channel + key (AC NOTIF-10.2)
+- [x] Unknown channel in `CHANNELS_ENABLED` → throws
+- [x] `TOKENS` parsed into `Profile[]` with `defaultChannels`
+- [x] Happy path returns typed `AppConfig`
+- [x] Unit tests cover all above; `npm run test:unit` passes; test count recorded
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(config): env loader with fail-fast channel validation`
 
