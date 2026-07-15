@@ -57,7 +57,12 @@ export class BullMqQueue implements QueuePort {
   }
 
   async enqueueDispatch(job: DispatchJob): Promise<{ jobId: string }> {
-    const added = await this.dispatchQueue.add(DISPATCH_QUEUE, job, this.jobOpts)
+    // A dedupKey pins the BullMQ jobId, so a client retry of the same logical
+    // notification collapses onto the existing job instead of enqueuing a
+    // duplicate (spec edge case: best-effort dedup). Absent a dedupKey,
+    // BullMQ assigns its own incrementing id -- behavior unchanged.
+    const opts = job.dedupKey ? { ...this.jobOpts, jobId: job.dedupKey } : this.jobOpts
+    const added = await this.dispatchQueue.add(DISPATCH_QUEUE, job, opts)
     // BullMQ always assigns an id once add() resolves.
     return { jobId: added.id as string }
   }
