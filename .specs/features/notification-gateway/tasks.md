@@ -207,55 +207,55 @@ T2  → T20 ├→ T21 → T23
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): discord adapter`
 
-### T10: InMemoryQueue (QueuePort)
+### T10: InMemoryQueue (QueuePort) ✅
 **What**: `InMemoryQueue implements QueuePort` — synchronous handler invocation, health()=true, records jobs; test double for the whole pipeline.
 **Where**: `src/queue/in-memory-queue.ts` (+ `.test.ts`)
 **Depends on**: T2
 **Requirement**: NOTIF-02 (test seam)
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] `enqueueDispatch`/`enqueueDelivery` invoke registered handlers; returns jobId
-- [ ] `health()` → true; Unit tests pass
+- [x] `enqueueDispatch`/`enqueueDelivery` invoke registered handlers; returns jobId
+- [x] `health()` → true; Unit tests pass
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(queue): in-memory queue adapter`
 
-### T11: Dispatch service [P]
+### T11: Dispatch service [P] ✅
 **What**: `resolveChannels(profile, requested?, active)` + `handleDispatch(job)` → enqueue one delivery job per resolved channel; empty set → logged no-op.
 **Where**: `src/dispatch/dispatch-service.ts` (+ `.test.ts`)
 **Depends on**: T2, T10
 **Requirement**: NOTIF-03
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] resolve: requested∩active; default∩active; empty → []
-- [ ] handleDispatch enqueues N delivery jobs (assert via InMemoryQueue)
-- [ ] empty set → no enqueue + warn log (NOTIF-03.4)
-- [ ] Unit tests cover all; `npm run test:unit` passes
+- [x] resolve: requested∩active; default∩active; empty → []
+- [x] handleDispatch enqueues N delivery jobs (assert via InMemoryQueue)
+- [x] empty set → no enqueue + warn log (NOTIF-03.4)
+- [x] Unit tests cover all; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(dispatch): channel resolution + fan-out`
 
-### T12: Delivery service [P]
+### T12: Delivery service [P] ✅
 **What**: `deliver(job)` → `registry channel.send(notification)`; success = resolve; failure = throw (so queue retries); build `DeliveryResult` with attempts/durationMs via `Clock`.
 **Where**: `src/delivery/delivery-service.ts` (+ `.test.ts`)
 **Depends on**: T2, T4
 **Requirement**: NOTIF-02, NOTIF-04
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Success path resolves; channel throw propagates (for retry)
-- [ ] `DeliveryResult` shape correct (channel, ok, error, attempts, durationMs)
-- [ ] Unit tests: success + failure; `npm run test:unit` passes
+- [x] Success path resolves; channel throw propagates (for retry)
+- [x] `DeliveryResult` shape correct (channel, ok, error, attempts, durationMs)
+- [x] Unit tests: success + failure; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(delivery): single-channel delivery service`
 
-### T13: BullMQ queue adapter [P]
+### T13: BullMQ queue adapter [P] ✅
 **What**: `BullMqQueue implements QueuePort` — two queues (dispatch, delivery) + workers; job opts `attempts`/`backoff`; failed→dead-letter; `health()` pings Redis.
 **Where**: `src/queue/bullmq-queue.ts`
 **Depends on**: T2, T10
 **Requirement**: NOTIF-02
 **Tools**: MCP: `context7`/`docs-seeker` (BullMQ retry/backoff/DLQ) · Skill: NONE
 **Done when**:
-- [ ] Implements `QueuePort`; two queues + workers wired with retry/backoff
-- [ ] Exhausted retries land in a failed/dead-letter set (not dropped)
-- [ ] `npm run build` passes (behavior verified by Phase 5 smoke — no unit test per matrix)
+- [x] Implements `QueuePort`; two queues + workers wired with retry/backoff
+- [x] Exhausted retries land in a failed/dead-letter set (not dropped)
+- [x] `npm run build` passes (behavior verified by Phase 5 smoke — no unit test per matrix)
 **Tests**: none (integration via smoke) · **Gate**: build
 **Commit**: `feat(queue): bullmq adapter with retry + dead-letter`
 
