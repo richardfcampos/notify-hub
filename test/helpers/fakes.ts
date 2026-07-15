@@ -1,7 +1,8 @@
 /**
  * Shared test doubles for the mockable seams (HttpClient, MailTransport,
- * Clock, Logger, FileStore). Used by channel-builder/decorator/adapter and
- * admin-panel unit/e2e tests -- never imported by production code.
+ * Clock, Logger, FileStore, CommandRunner). Used by channel-builder/
+ * decorator/adapter and admin-panel unit/e2e tests -- never imported by
+ * production code.
  */
 import type {
   Clock,
@@ -10,6 +11,7 @@ import type {
   MailTransport
 } from '../../src/core/ports.js'
 import type { FileStore } from '../../src/admin/env-file-store.js'
+import type { CommandResult, CommandRunner } from '../../src/admin/command-runner.js'
 
 export interface RecordedRequest {
   method: string
@@ -150,5 +152,35 @@ export class FakeFileStore implements FileStore {
     const path = `fake-backup-${this.backupCounter}`
     this.backups.push(path)
     return path
+  }
+}
+
+export interface RecordedCommand {
+  cmd: string
+  args: string[]
+  opts?: { cwd?: string; timeoutMs?: number }
+}
+
+/**
+ * Records every invocation. Results are consumed in FIFO order via
+ * `queueResult`; once the queue is empty it falls back to `defaultResult`
+ * (exit code 0, empty output).
+ */
+export class FakeCommandRunner implements CommandRunner {
+  readonly calls: RecordedCommand[] = []
+  private readonly script: CommandResult[] = []
+  defaultResult: CommandResult = { code: 0, stdout: '', stderr: '' }
+
+  queueResult(result: CommandResult): void {
+    this.script.push(result)
+  }
+
+  async run(
+    cmd: string,
+    args: string[],
+    opts?: { cwd?: string; timeoutMs?: number }
+  ): Promise<CommandResult> {
+    this.calls.push({ cmd, args, opts })
+    return this.script.shift() ?? this.defaultResult
   }
 }

@@ -10,7 +10,10 @@
  * on this machine only".
  */
 import Fastify, { type FastifyInstance } from 'fastify'
+import { registerApplyRoute } from './routes/apply-route.js'
 import { registerConfigRoutes } from './routes/config-routes.js'
+import { registerStatusRoute } from './routes/status-route.js'
+import { registerTestSendRoute } from './routes/test-send-route.js'
 import { registerStaticUiRoutes } from './static-ui-files.js'
 import type { AdminServerDeps } from './admin-server-deps.js'
 
@@ -20,6 +23,9 @@ export function buildAdminServer(deps: AdminServerDeps): FastifyInstance {
   const app = Fastify({ logger: false })
 
   registerConfigRoutes(app, deps)
+  registerApplyRoute(app, deps)
+  registerStatusRoute(app, deps)
+  registerTestSendRoute(app, deps)
 
   // Registered last: Fastify's router (find-my-way) matches static paths
   // like /api/config ahead of a /* wildcard regardless of registration

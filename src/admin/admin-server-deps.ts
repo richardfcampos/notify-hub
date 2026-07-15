@@ -6,26 +6,20 @@
  */
 import type { HttpClient } from '../core/ports.js'
 import type { ChannelSchema } from './admin-config.js'
+import type { CommandRunner } from './command-runner.js'
 import type { FileStore } from './env-file-store.js'
-
-/**
- * Command-execution seam used by /api/apply, /api/status and
- * /api/test-send (the full `CommandRunner` port + execFile impl arrive in
- * ./command-runner.ts). Declared inline here so this module has no forward
- * dependency on that file.
- */
-export interface CommandRunnerLike {
-  run(
-    cmd: string,
-    args: string[],
-    opts?: { cwd?: string; timeoutMs?: number }
-  ): Promise<{ code: number; stdout: string; stderr: string }>
-}
 
 export interface AdminServerDeps {
   fileStore: FileStore
   registry: Record<string, ChannelSchema>
-  commandRunner?: CommandRunnerLike
+  /** Required for /api/apply, /api/status (delivery tail) and /api/test-send's outcome poll. */
+  commandRunner?: CommandRunner
+  /** Required for /api/status (gateway health/channels) and /api/test-send. */
   http?: HttpClient
   uiDir?: string
+  /** Test-send outcome poll tuning (ADMIN-05.2/.3). Defaults: 10 attempts x 1000ms (~10s total real). */
+  testSendPollAttempts?: number
+  testSendPollIntervalMs?: number
+  /** Injectable delay between poll attempts so tests run instantly instead of waiting real time. */
+  delay?: (ms: number) => Promise<void>
 }
