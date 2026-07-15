@@ -137,3 +137,98 @@
 3. `apply`/`status`/`test-send` shell out with `cwd: process.cwd()` (not the resolved `repoRoot`); relies on admin being launched from repo root (npm script does). Minor coupling, not a spec violation.
 
 **Verdict**: PASS
+
+---
+---
+
+# Admin Panel — Amendment 1 Validation (dockerized admin: ADMIN-08 + revised ADMIN-01)
+
+**Date**: 2026-07-15
+**Spec**: `.specs/features/admin-panel/spec.md` → **Amendment 1** section only (revised ADMIN-01.1/.2 + ADMIN-08.1..4)
+**Diff range**: `8bcd627..HEAD` (9da9be5 env-configurable host/paths + apply scoping, 732f843 compose service + Dockerfile stage + invariant test, 9add30a docs)
+**Verifier**: independent sub-agent (author ≠ verifier), read-only; 5 sensor mutations in scratch only, each reverted; tracked source tree clean after.
+**Scope note**: the base feature (validated above) is NOT re-verified; this section only covers the Amendment 1 surface.
+
+---
+
+## Spec-Anchored Acceptance Criteria (Amendment 1)
+
+| Criterion (WHEN X THEN Y) | Spec-defined outcome | `file:line` + evidence | Result |
+| --- | --- | --- | --- |
+| ADMIN-01.1: started on host (`npm run admin`) → listen 127.0.0.1 by default; `ADMIN_HOST` may override | default bound addr `127.0.0.1`; override honored | `admin-server.ts:47` `DEFAULT_ADMIN_HOST='127.0.0.1'` + `:61` `host = opts.host ?? DEFAULT_ADMIN_HOST`; env wiring `bin/admin.ts:50` `process.env.ADMIN_HOST ?? '127.0.0.1'`. Tests: `admin-server.e2e.test.ts:210` real bound `.address).toBe('127.0.0.1')`; `:219` override `.toBe('0.0.0.0')` | ✅ PASS |
+| ADMIN-01.2: via compose → container listens 0.0.0.0 internally BUT host-side mapping pinned `127.0.0.1:8081:8081`; invariant asserted by a test parsing docker-compose.yml | every host-side port mapping starts `127.0.0.1:` | compose `docker-compose.yml:74` `ADMIN_HOST: 0.0.0.0` + `:69` `- "127.0.0.1:${ADMIN_PORT:-8081}:${ADMIN_PORT:-8081}"`. Test `compose-invariants.test.ts:83-85` `for (port) expect(port.startsWith('127.0.0.1:')).toBe(true)`. Sensor (a) killed. | ✅ PASS |
+| ADMIN-08.1: `docker compose up -d` → `admin` service serves panel at http://127.0.0.1:8081, no extra steps | admin container Up; 127.0.0.1:8081 serves | compose `admin` service `docker-compose.yml:60-92`. **Live smoke**: `docker compose ps` → `notify-hub-admin-1 Up [8081]`; `curl http://127.0.0.1:8081/api/status` → `200 {"gateway":{"up":true,"redis":true},...}` | ✅ PASS (live smoke; infra — no unit test) |
+| ADMIN-08.2: Save & Apply inside container → recreate gateway via mounted socket using `docker compose up -d --no-build api worker`; never admin itself; project pinned via top-level `name:` | exact args `['compose','up','-d','--no-build','api','worker']`; `name: notify-hub`; socket mounted | args `apply-route.ts:23`. Tests `apply-route.e2e.test.ts:44,58` `expect(commandRunner.calls).toEqual([{...args:[...'api','worker'],...}])` (2 tests). Socket `docker-compose.yml:89` `/var/run/docker.sock:/var/run/docker.sock`. `name` `:12`; test `compose-invariants.test.ts:89-90`. Sensors (b),(d) killed. | ✅ PASS |
+| ADMIN-08.3: admin writes .env → survives containerization; project dir bind-mounted (not single-file); env-file path + compose dir env-configurable (`ENV_FILE_PATH`, `COMPOSE_DIR`) | dir-mount `.:/config`; `ENV_FILE_PATH`/`COMPOSE_DIR` read from env & wired to routes | env-config: `bin/admin.ts:51-52` `ENV_FILE_PATH ?? join(cwd,'.env')` / `COMPOSE_DIR ?? cwd`; routes `apply-route.ts:24`, `status-route.ts:24`, `test-send-route.ts:67` use `deps.composeDir ?? process.cwd()`. Tests assert `opts.cwd:'/config'`: `apply-route.e2e.test.ts:58`, `status-route.e2e.test.ts` (composeDir case), `test-send-route.e2e.test.ts` (composeDir case). Dir-mount `docker-compose.yml:84` `- .:/config`, `:80-81` `ENV_FILE_PATH: /config/.env` / `COMPOSE_DIR: /config`. | ✅ PASS (env-config tested; dir-mount structural/code-present + live) |
+| ADMIN-08.4: admin → gateway base URL env-configurable (`NOTIFY_GATEWAY_URL`), default localhost on host, `http://api:<port>` in compose | override precedence over derived localhost URL | `gateway-client.ts:23` `baseUrl: baseUrlOverride?.trim() || http://localhost:${port}`; wired `bin/admin.ts:53` `NOTIFY_GATEWAY_URL` → `deps.gatewayBaseUrl` → `buildGatewayContext(cfg, deps.gatewayBaseUrl)` in `status-route.ts:20`, `test-send-route.ts:48`. Tests `gateway-client.test.ts:38` override wins, `:45-46` blank/undefined falls back. compose `docker-compose.yml:82` `NOTIFY_GATEWAY_URL: http://api:${PORT:-8080}`. **Live**: status `gateway.up:true` = containerized admin reached `api` over compose net. Sensor (e) killed. | ✅ PASS |
+
+**Status**: ✅ 6/6 Amendment ACs covered with spec-anchored evidence. ADMIN-08.1 (infra "up brings it up") and the dir-mount half of ADMIN-08.3 are structural compose facts — verified by reading compose + live smoke, not by a unit test (honest record; nature of infra config).
+
+---
+
+## Discrimination Sensor (Amendment 1)
+
+Scratch mutations, one at a time, each reverted via `git checkout --`; targeted test run per mutation.
+
+| # | File:line | Mutation | Expected killer | Killed? |
+| - | --------- | -------- | --------------- | ------- |
+| a | `docker-compose.yml:69` | ports → `"8081:8081"` (unpinned host side) | compose-invariants ports test | ✅ Killed (`compose-invariants.test.ts:84` `expected false to be true`) |
+| b | `docker-compose.yml:12` | removed top-level `name: notify-hub` | compose-invariants project-name test | ✅ Killed (`expected undefined to be 'notify-hub'`) |
+| c | `admin-server.ts:47` | `DEFAULT_ADMIN_HOST '127.0.0.1'` → `'0.0.0.0'` | binding default-host test | ✅ Killed (`expected '0.0.0.0' to be '127.0.0.1'`) |
+| d | `apply-route.ts:23` | apply args append `'admin'` | apply exact-args tests | ✅ Killed (2 tests: base + composeDir args) |
+| e | `gateway-client.ts:23` | drop `baseUrlOverride` (hardcode localhost) | gateway-client override test | ✅ Killed (`expected {…} to deeply equal { baseUrl:'http://api:8080',… }`) |
+
+**Sensor depth**: 5 targeted behavior-level mutations (feature touches host-daemon socket + LAN-binding invariant → elevated).
+**Result**: 5/5 killed — PASS ✅. Tracked source tree clean after all reverts (`git status --porcelain docker-compose.yml src/` empty). Pre-existing untracked `.claude/`, `AGENTS.md`, `CLAUDE.md` are unrelated to this amendment.
+
+---
+
+## Gate Check (Amendment 1)
+
+- **Build**: `npm run build` → OK (tsc + admin-ui copy)
+- **Full suite**: `npm run test` → **32 files, 193 tests passed, 0 failed, 0 skipped** (matches stated baseline 193; Docker running). Re-run after all sensor reverts: 193 passed (green).
+- **Test count before amendment** (validated feature): 185 → **after: 193 — Delta +8** (1 binding override, 2 gateway override/fallback, 1 apply composeDir, 1 status composeDir, 1 test-send composeDir, 2 compose-invariants). All additive; none deleted; no assertions weakened.
+- **Live smoke**: admin container Up on 127.0.0.1:8081; `/api/status` 200 with `gateway.up:true, redis:true` (ADMIN-08.1 + ADMIN-08.4 confirmed against the real stack).
+
+---
+
+## Code Quality (Amendment 1 surface)
+
+| Principle | Status |
+| --------- | ------ |
+| Minimum code / no scope creep | ✅ (env-reading stays in `bin/admin.ts`; modules remain env-free; regex compose-parser is deliberately narrow — 2 asserted facts, no YAML-parser dep) |
+| Surgical changes, only touched files in scope | ✅ (compose/Dockerfile/.env.example + admin deps/routes/gateway/bin + 1 new test file) |
+| Matches existing patterns (Ports & Adapters, injected deps over `process.cwd()` reads) | ✅ (`composeDir`/`gatewayBaseUrl` added to `AdminServerDeps`, wired at the edge) |
+| Spec-anchored outcome check (asserted values match spec) | ✅ backend/compose; ADMIN-08.1 + dir-mount = live/structural |
+| Every added test maps to an Amendment AC | ✅ no unclaimed tests |
+
+---
+
+## Requirement Traceability Update (Amendment 1)
+
+| Requirement | New Status |
+| ----------- | ---------- |
+| ADMIN-01 (revised: default 127.0.0.1 host mode + `ADMIN_HOST` override + compose port pinning) | ✅ Verified |
+| ADMIN-08 Dockerized admin service (.1 live, .2/.3/.4 tested) | ✅ Verified |
+
+---
+
+## Ranked Gaps / Observations (Amendment 1)
+
+1. **(Minor, coverage) Compose env values not test-asserted.** `compose-invariants.test.ts` asserts only the port pinning + `name`. The `admin` service's `ADMIN_HOST: 0.0.0.0`, `NOTIFY_GATEWAY_URL`, `ENV_FILE_PATH`, `COMPOSE_DIR`, the `.:/config` dir-mount, and the `docker.sock` mount are code-present + live-smoke only — deleting any would not fail the suite (only live smoke would catch it). Acceptable for infra config; a few extra assertions in the same parser test would close it if desired.
+2. **(Non-blocking, accepted trade-off) Docker socket mount grants host-daemon control** to the admin container. Explicitly accepted in spec (Portainer pattern) and documented in README/compose comments; in scope only for a personal, localhost-bound tool.
+3. **(Non-blocking, documented) `apply` uses `--no-build`** — relies on api/worker images already built out of band; a missing image makes `up` fail rather than rebuild. Documented in `apply-route.ts` header; matches spec's "compose already builds images out of band".
+
+**No production-readiness defects found on the amendment surface**: LAN-unreachable invariant is enforced by the compose mapping AND asserted by a parsing test; apply is scoped away from the admin service (no self-kill mid-request) and asserted; project name pinned (no duplicate stack) and asserted; gateway URL override honored and asserted + live-confirmed.
+
+---
+
+## Amendment 1 Summary
+
+**Overall**: ✅ Ready
+**Spec-anchored check**: 6/6 Amendment ACs matched spec outcomes (ADMIN-08.1 + dir-mount half of ADMIN-08.3 = live/structural, honestly recorded).
+**Sensor**: 5/5 mutations killed.
+**Gate**: 193 passed, build OK, tracked tree clean after reverts.
+**Live**: admin container Up on 127.0.0.1:8081; `/api/status` 200, gateway reachable from container.
+
+**Verdict**: PASS
