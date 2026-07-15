@@ -1,0 +1,105 @@
+/**
+ * Production QueuePort implementation over BullMQ + Redis (spec NOTIF-02).
+ * Two named queues -- dispatch and delivery -- each backed by a Worker that
+ * invokes the handler registered via onDispatch/onDelivery. Retry/backoff
+ * comes from BullMQ job options (attempts + exponential backoff, spec
+ * NOTIF-02.2); `removeOnFail: false` keeps a job whose retries are
+ * exhausted in the failed set as the dead-letter (spec NOTIF-02.3) instead
+ * of dropping it. No unit test (needs real Redis) -- behavior is verified
+ * by the Phase 5 docker smoke; this file only needs to build cleanly.
+ */
+import { Queue, Worker } from 'bullmq'
+import { Redis } from 'ioredis'
+import type { QueuePort } from '../core/ports.js'
+import type { DeliveryJob, DispatchJob } from '../core/types.js'
+
+const DISPATCH_QUEUE = 'dispatch'
+const DELIVERY_QUEUE = 'delivery'
+
+export interface BullMqQueueConfig {
+  redisUrl: string
+  retry: { attempts: number; backoffMs: number }
+}
+
+export class BullMqQueue implements QueuePort {
+  private readonly connection: Redis
+  private readonly dispatchQueue: Queue<DispatchJob>
+  private readonly deliveryQueue: Queue<DeliveryJob>
+  private readonly jobOpts: {
+    attempts: number
+    backoff: { type: 'exponential'; delay: number }
+    removeOnComplete: boolean
+    removeOnFail: boolean
+  }
+
+  private dispatchWorker: Worker<DispatchJob> | null = null
+  private deliveryWorker: Worker<DeliveryJob> | null = null
+
+  constructor(config: BullMqQueueConfig) {
+    // maxRetriesPerRequest: null is required by BullMQ workers, which use
+    // blocking Redis commands; this one connection is shared by both
+    // queues and both workers.
+    this.connection = new Redis(config.redisUrl, {
+      maxRetriesPerRequest: null
+    })
+    this.jobOpts = {
+      attempts: config.retry.attempts,
+      backoff: { type: 'exponential', delay: config.retry.backoffMs },
+      removeOnComplete: true,
+      removeOnFail: false
+    }
+    this.dispatchQueue = new Queue<DispatchJob>(DISPATCH_QUEUE, {
+      connection: this.connection
+    })
+    this.deliveryQueue = new Queue<DeliveryJob>(DELIVERY_QUEUE, {
+      connection: this.connection
+    })
+  }
+
+  async enqueueDispatch(job: DispatchJob): Promise<{ jobId: string }> {
+    const added = await this.dispatchQueue.add(DISPATCH_QUEUE, job, this.jobOpts)
+    // BullMQ always assigns an id once add() resolves.
+    return { jobId: added.id as string }
+  }
+
+  async enqueueDelivery(job: DeliveryJob): Promise<{ jobId: string }> {
+    const added = await this.deliveryQueue.add(DELIVERY_QUEUE, job, this.jobOpts)
+    return { jobId: added.id as string }
+  }
+
+  onDispatch(handler: (job: DispatchJob) => Promise<void>): void {
+    // A processor that throws lets BullMQ retry per `attempts`, then land
+    // the job in the failed set (dead-letter) -- never swallow here.
+    this.dispatchWorker = new Worker<DispatchJob>(
+      DISPATCH_QUEUE,
+      async (job) => handler(job.data),
+      { connection: this.connection }
+    )
+  }
+
+  onDelivery(handler: (job: DeliveryJob) => Promise<void>): void {
+    this.deliveryWorker = new Worker<DeliveryJob>(
+      DELIVERY_QUEUE,
+      async (job) => handler(job.data),
+      { connection: this.connection }
+    )
+  }
+
+  async health(): Promise<boolean> {
+    try {
+      return (await this.connection.ping()) === 'PONG'
+    } catch {
+      return false
+    }
+  }
+
+  async close(): Promise<void> {
+    await Promise.all([
+      this.dispatchWorker?.close(),
+      this.deliveryWorker?.close(),
+      this.dispatchQueue.close(),
+      this.deliveryQueue.close()
+    ])
+    await this.connection.quit()
+  }
+}
