@@ -11,6 +11,7 @@ import { emailRegistryEntry } from './adapters/email-channel.js'
 import { ntfyRegistryEntry } from './adapters/ntfy-channel.js'
 import { slackRegistryEntry } from './adapters/slack-channel.js'
 import { telegramRegistryEntry } from './adapters/telegram-channel.js'
+import { webhookRegistryEntry } from './adapters/webhook-channel.js'
 import { whatsappRegistryEntry } from './adapters/whatsapp-channel.js'
 
 export const channelRegistry: Record<string, ChannelRegistryEntry> = {
@@ -19,7 +20,8 @@ export const channelRegistry: Record<string, ChannelRegistryEntry> = {
   email: emailRegistryEntry,
   slack: slackRegistryEntry,
   discord: discordRegistryEntry,
-  whatsapp: whatsappRegistryEntry
+  whatsapp: whatsappRegistryEntry,
+  webhook: webhookRegistryEntry
 }
 
 /** channel name -> required env keys, derived from the registry above. */
