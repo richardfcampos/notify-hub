@@ -22,3 +22,11 @@ COPY --from=build /app/dist ./dist
 # (node dist/bin/api.js or node dist/bin/worker.js). Default to api so the
 # image is still runnable standalone (`docker run <image>`).
 CMD ["node", "dist/bin/api.js"]
+
+# Admin panel stage (ADMIN-08): adds the Docker CLI + compose plugin so the
+# admin container can drive `docker compose` against the mounted host
+# socket (Save & Apply, worker-log tail). Kept as its own stage instead of
+# adding docker-cli to the shared runtime image so api/worker stay minimal.
+FROM runtime AS admin
+RUN apk add --no-cache docker-cli docker-cli-compose
+CMD ["node", "dist/bin/admin.js"]

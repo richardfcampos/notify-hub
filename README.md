@@ -145,12 +145,23 @@ editing `.env`:
 - Manage token profiles (`TOKENS`): add/remove, edit the token, and pick
   each profile's default channels.
 - **Save & Apply** validates, backs up `.env` (timestamped), writes the new
-  file, and runs `docker compose up -d` -- one click, no terminal.
+  file, and runs `docker compose up -d --no-build api worker` -- one click,
+  no terminal.
 - **Send test** per channel posts a real notification and shows the actual
   delivery outcome (✅ sent, or the real failure reason ❌), not just
   "enqueued".
 - Live gateway status (health, redis, active channels) and a tail of recent
   worker deliveries.
+
+Comes up automatically as part of the stack -- no extra step:
+
+```bash
+docker compose up -d
+# => http://127.0.0.1:8081
+```
+
+`npm run admin` still works as a host-side dev alternative (no Docker
+rebuild needed while iterating on the panel itself):
 
 ```bash
 npm run admin
@@ -159,7 +170,21 @@ npm run admin
 
 Binds `127.0.0.1` only -- no password, no remote access; the trust boundary
 is "runs on this machine" (override the port with `ADMIN_PORT` in your
-shell environment, not in `.env`).
+shell environment, not in `.env`). In compose, the `admin` container
+listens on `0.0.0.0` internally so the port mapping can reach it, but the
+mapping itself is pinned `127.0.0.1:8081:8081` on the host side, so the
+panel is never reachable from the LAN either way (asserted by
+`src/admin/compose-invariants.test.ts`).
+
+**Docker-socket trade-off:** the `admin` service mounts
+`/var/run/docker.sock` so Save & Apply can run
+`docker compose up -d --no-build api worker` against the real stack from
+inside the container (it never recreates the `admin` service itself --
+that would kill the container mid-request). This gives the admin
+container control of the host's Docker daemon, the same pattern used by
+tools like Portainer. Accepted because the panel is a personal,
+localhost-bound tool with no auth of its own -- the trust boundary is
+already "whoever has shell access to this machine".
 
 ## Development
 

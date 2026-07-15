@@ -1,6 +1,16 @@
 # Full self-hosted stack (spec NOTIF-12): redis (durable queue backing
 # store), api (accepts POST /notify, enqueues dispatch jobs), worker
-# (processes dispatch + delivery jobs against the channel adapters).
+# (processes dispatch + delivery jobs against the channel adapters), admin
+# (dockerized admin panel, spec Amendment 1 / ADMIN-08).
+#
+# `name:` is pinned so that `docker compose` invoked FROM INSIDE the admin
+# container (against the same bind-mounted directory, but at a different
+# path -- /config, whose basename is not "notify-hub") still resolves to
+# this exact project. Without it, compose would derive the project name
+# from the mount's basename and manage a second, duplicate stack instead
+# of this one.
+name: notify-hub
+
 services:
   redis:
     image: redis:7-alpine
@@ -45,6 +55,40 @@ services:
       REDIS_URL: redis://redis:6379
     depends_on:
       - redis
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      target: admin
+    ports:
+      # Host side MUST stay pinned to 127.0.0.1 -- the LAN-unreachable
+      # invariant (ADMIN-01.2), asserted by
+      # src/admin/compose-invariants.test.ts. The container listens on
+      # 0.0.0.0 internally (ADMIN_HOST below) so this mapping can reach it.
+      - "127.0.0.1:${ADMIN_PORT:-8081}:${ADMIN_PORT:-8081}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ADMIN_HOST: 0.0.0.0
+      ADMIN_PORT: ${ADMIN_PORT:-8081}
+      # Directory bind-mount (not a single-file mount): required so the
+      # admin's atomic tmp-write+rename and timestamped `.env.backup.*`
+      # files land on the host directory instead of breaking against a
+      # single-file mount's inode semantics.
+      ENV_FILE_PATH: /config/.env
+      COMPOSE_DIR: /config
+      NOTIFY_GATEWAY_URL: http://api:${PORT:-8080}
+    volumes:
+      - .:/config
+      # Grants the container control of the host's Docker daemon so Save &
+      # Apply can run `docker compose up -d --no-build api worker` against
+      # the real stack. Accepted trade-off for a personal, localhost-bound
+      # tool (same pattern as Portainer) -- documented in README.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - api
     restart: unless-stopped
 
 volumes:
