@@ -104,3 +104,25 @@ Configuring notify-hub means hand-editing `.env` and remembering to `docker comp
 
 - [ ] Full loop without terminal: open panel → fix a credential → Save & Apply → Send test → see ✅ on the phone and in the panel.
 - [ ] All admin API behavior unit/e2e tested with fakes (FS, CommandRunner, gateway HTTP) — no Docker needed for the test suite.
+
+---
+
+## Amendment 1 — Admin panel ships in Docker Compose (2026-07-15)
+
+User decision: no `npm run admin` required — `docker compose up -d` must bring the panel up alongside redis/api/worker. Supersedes the host-side-only placement (STATE AD-014 supersedes that aspect of AD-013). Host mode (`npm run admin`) remains as a dev alternative.
+
+### ADMIN-01 (revised)
+1. WHEN started on the host (`npm run admin`) THEN the server SHALL listen on `127.0.0.1` by default (`ADMIN_HOST` env may override — needed inside containers).
+2. WHEN started via docker compose THEN the container SHALL listen on `0.0.0.0` internally BUT the compose port mapping SHALL bind the host side to `127.0.0.1` only (`"127.0.0.1:8081:8081"`) — the LAN-unreachable invariant moves to the compose file and SHALL be asserted by a test that parses `docker-compose.yml`.
+
+### ADMIN-08: Dockerized admin service ⭐ MVP
+1. WHEN the user runs `docker compose up -d` THEN an `admin` service SHALL start serving the panel at `http://127.0.0.1:8081` with no extra steps.
+2. WHEN Save & Apply runs inside the container THEN it SHALL recreate the gateway services via the mounted Docker socket using `docker compose up -d --no-build api worker` (never recreating the admin service itself mid-request; compose project pinned via top-level `name:` so no duplicate stack is created).
+3. WHEN the admin writes `.env` THEN the write SHALL survive containerization: the project directory is bind-mounted (not a single-file mount) so atomic tmp+rename and timestamped backups work and are visible on the host; the env-file path and compose working dir SHALL be env-configurable (`ENV_FILE_PATH`, `COMPOSE_DIR`).
+4. WHEN the admin talks to the gateway THEN the base URL SHALL be env-configurable (`NOTIFY_GATEWAY_URL`), defaulting to the current localhost behavior on the host and set to `http://api:<port>` in compose.
+
+**Accepted trade-off (recorded):** mounting `/var/run/docker.sock` gives the admin container control of the host's Docker daemon. Acceptable for a personal, localhost-bound tool (same pattern as Portainer); documented in the README.
+
+| Requirement ID | Story | Status |
+| -------------- | ----- | ------ |
+| ADMIN-08 | Dockerized admin service | Pending |
