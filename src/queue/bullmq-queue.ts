@@ -9,6 +9,7 @@
  * by the Phase 5 docker smoke; this file only needs to build cleanly.
  */
 import { Queue, Worker } from 'bullmq'
+import type { Job } from 'bullmq'
 import { Redis } from 'ioredis'
 import type { QueuePort } from '../core/ports.js'
 import type { DeliveryJob, DispatchJob } from '../core/types.js'
@@ -19,12 +20,20 @@ const DELIVERY_QUEUE = 'delivery'
 export interface BullMqQueueConfig {
   redisUrl: string
   retry: { attempts: number; backoffMs: number }
+  /**
+   * BullMQ key prefix namespacing every Redis key. Unset -> BullMQ's own
+   * default, so production behavior is unchanged; integration tests pass a
+   * unique value per instance to isolate their queues from one another.
+   */
+  prefix?: string
 }
 
 export class BullMqQueue implements QueuePort {
   private readonly connection: Redis
   private readonly dispatchQueue: Queue<DispatchJob>
   private readonly deliveryQueue: Queue<DeliveryJob>
+  /** Connection (+ optional prefix) reused for every Queue and Worker. */
+  private readonly baseOpts: { connection: Redis; prefix?: string }
   private readonly jobOpts: {
     attempts: number
     backoff: { type: 'exponential'; delay: number }
@@ -42,18 +51,17 @@ export class BullMqQueue implements QueuePort {
     this.connection = new Redis(config.redisUrl, {
       maxRetriesPerRequest: null
     })
+    this.baseOpts = config.prefix
+      ? { connection: this.connection, prefix: config.prefix }
+      : { connection: this.connection }
     this.jobOpts = {
       attempts: config.retry.attempts,
       backoff: { type: 'exponential', delay: config.retry.backoffMs },
       removeOnComplete: true,
       removeOnFail: false
     }
-    this.dispatchQueue = new Queue<DispatchJob>(DISPATCH_QUEUE, {
-      connection: this.connection
-    })
-    this.deliveryQueue = new Queue<DeliveryJob>(DELIVERY_QUEUE, {
-      connection: this.connection
-    })
+    this.dispatchQueue = new Queue<DispatchJob>(DISPATCH_QUEUE, this.baseOpts)
+    this.deliveryQueue = new Queue<DeliveryJob>(DELIVERY_QUEUE, this.baseOpts)
   }
 
   async enqueueDispatch(job: DispatchJob): Promise<{ jobId: string }> {
@@ -78,7 +86,7 @@ export class BullMqQueue implements QueuePort {
     this.dispatchWorker = new Worker<DispatchJob>(
       DISPATCH_QUEUE,
       async (job) => handler(job.data),
-      { connection: this.connection }
+      this.baseOpts
     )
   }
 
@@ -86,8 +94,23 @@ export class BullMqQueue implements QueuePort {
     this.deliveryWorker = new Worker<DeliveryJob>(
       DELIVERY_QUEUE,
       async (job) => handler(job.data),
-      { connection: this.connection }
+      this.baseOpts
     )
+  }
+
+  /**
+   * Read-only view of the delivery queue's failed (dead-letter) set: the
+   * jobs whose retries were exhausted and, because removeOnFail is false,
+   * parked rather than dropped (spec NOTIF-02.3). Ops/tests introspection
+   * only -- each returned Job exposes `attemptsMade` for retry-count checks.
+   */
+  async getFailedDeliveryJobs(): Promise<Job<DeliveryJob>[]> {
+    return this.deliveryQueue.getFailed()
+  }
+
+  /** Count of dispatch jobs waiting to be processed -- used to observe dedupKey collapse. */
+  async getWaitingDispatchCount(): Promise<number> {
+    return this.dispatchQueue.getWaitingCount()
   }
 
   async health(): Promise<boolean> {

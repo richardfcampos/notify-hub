@@ -119,8 +119,12 @@ full setup (settings.json snippet + env vars).
 ```bash
 npm install
 npm run build        # tsc -> dist/bin/{api,worker}.js
-npm run test          # full suite (unit + e2e + integration + hook client)
-npm run test:unit     # unit-only (fast inner loop)
+npm run test          # full suite -- REQUIRES Docker (spins up redis:7-alpine
+                      #   via testcontainers for the BullMQ retry/dead-letter
+                      #   integration test); set REDIS_TEST_URL to reuse a
+                      #   running Redis instead of a container
+npm run test:unit     # no-Docker fast subset (src unit tests only)
+npm run test:integration  # just the Redis-backed queue integration test
 npm run dev:api        # tsx, no build step
 npm run dev:worker
 ```
