@@ -35,7 +35,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run build:copy-admin-ui",
+    "build:copy-admin-ui": "mkdir -p dist/admin/ui && cp -R src/admin/ui/. dist/admin/ui/",
     "test": "vitest run",
     "test:unit": "vitest run src",
     "test:integration": "vitest run test/integration/bullmq-retry.integration.test.ts",
@@ -43,7 +44,8 @@
     "start:worker": "node dist/bin/worker.js",
     "start:mcp": "node dist/bin/mcp.js",
     "dev:api": "tsx src/bin/api.ts",
-    "dev:worker": "tsx src/bin/worker.ts"
+    "dev:worker": "tsx src/bin/worker.ts",
+    "admin": "tsx src/bin/admin.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

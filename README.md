@@ -134,11 +134,39 @@ direct Redis access). See
 [`clients/mcp/install.md`](./clients/mcp/install.md) for the full setup
 (`claude mcp add` command + generic `mcpServers` JSON config).
 
+## Admin panel
+
+A local, dark-themed dashboard for managing everything above without hand-
+editing `.env`:
+
+- View every channel (ntfy, Telegram, Email, Slack, Discord, WhatsApp,
+  webhook), toggle it on/off, and edit its credentials -- masked by default,
+  revealed with one click.
+- Manage token profiles (`TOKENS`): add/remove, edit the token, and pick
+  each profile's default channels.
+- **Save & Apply** validates, backs up `.env` (timestamped), writes the new
+  file, and runs `docker compose up -d` -- one click, no terminal.
+- **Send test** per channel posts a real notification and shows the actual
+  delivery outcome (✅ sent, or the real failure reason ❌), not just
+  "enqueued".
+- Live gateway status (health, redis, active channels) and a tail of recent
+  worker deliveries.
+
+```bash
+npm run admin
+# => admin panel: http://127.0.0.1:8081
+```
+
+Binds `127.0.0.1` only -- no password, no remote access; the trust boundary
+is "runs on this machine" (override the port with `ADMIN_PORT` in your
+shell environment, not in `.env`).
+
 ## Development
 
 ```bash
 npm install
-npm run build        # tsc -> dist/bin/{api,worker}.js
+npm run build        # tsc -> dist/bin/{api,worker,admin}.js, copies
+                      #   src/admin/ui -> dist/admin/ui (static UI assets)
 npm run test          # full suite -- REQUIRES Docker (spins up redis:7-alpine
                       #   via testcontainers for the BullMQ retry/dead-letter
                       #   integration test); set REDIS_TEST_URL to reuse a
