@@ -18,6 +18,7 @@
     "dev:worker": "tsx src/bin/worker.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "bullmq": "^5.80.2",
     "fastify": "^5.10.0",
     "ioredis": "^5.11.1",
