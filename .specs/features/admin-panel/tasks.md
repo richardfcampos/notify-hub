@@ -1,7 +1,7 @@
 # Admin Panel Tasks
 
 **Spec**: `.specs/features/admin-panel/spec.md`
-**Status**: In Progress
+**Status**: Implementation complete (pending validation)
 **Scope**: Large-ish — 2 phases, 5 tasks. Design inline: host-side Fastify app (`src/admin/`), Ports & Adapters like the rest of the repo — new ports `FileStore` (read/write/backup .env) and `CommandRunner` (compose/logs), gateway reached via existing `HttpClient` port. UI = vanilla dark dashboard served as static files.
 
 ## Test Coverage Matrix (inherits project conventions)
@@ -37,12 +37,12 @@ Phase 2 (UI+wire):  A4 → A5
 **Requirement**: ADMIN-04, ADMIN-05, ADMIN-06 · **Tests**: e2e/unit · **Gate**: full
 **Commit**: `feat(admin): apply, status and per-channel test-send`
 
-### A4: dark dashboard UI
+### A4: dark dashboard UI ✅
 **What**: `src/admin/ui/admin.html` + `admin.css` + `admin.js` (vanilla, self-contained, no CDN; each file <200 lines, split further if needed). Dark dev-dashboard: status bar (gateway/redis/active channels), channel cards (enabled toggle, per-key inputs `type=password` + eye reveal toggle + copy, Send test button with inline ✅/❌ + reason), profiles section (name, token masked+reveal, default-channel chips), sticky Save & Apply bar appearing on unsaved changes, apply-steps feedback (validate → backup → write → compose), error toasts. Fetches the A2/A3 API.
 **Requirement**: ADMIN-07 (+ AC coverage of reveal/masking, unsaved tracking) · **Tests**: none (behavior covered via API tests; UI smoke in A5) · **Gate**: build
 **Commit**: `feat(admin): dark dashboard UI`
 
-### A5: entrypoint, script, docs + live smoke
+### A5: entrypoint, script, docs + live smoke ✅
 **What**: `src/bin/admin.ts` (loads paths, builds server, prints URL; stderr-only logs), `package.json` script `"admin": "tsx src/bin/admin.ts"`, `.env.example` note `ADMIN_PORT=8081`, README "Admin panel" section (screenshot placeholder ok). Live smoke: start admin, `curl 127.0.0.1:8081/api/config` + `/api/status` against the real running stack, load UI HTML (200), then stop.
 **Requirement**: ADMIN-01 (+docs) · **Tests**: none · **Gate**: build + full-suite sanity
 **Commit**: `feat(admin): entrypoint, npm script and docs`
