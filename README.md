@@ -114,6 +114,17 @@ to notify-hub globally, across every Claude Code project. See
 [`clients/claude-code/install.md`](./clients/claude-code/install.md) for the
 full setup (settings.json snippet + env vars).
 
+## MCP server
+
+notify-hub also ships as an MCP (Model Context Protocol) server over stdio,
+exposing three tools -- `send_notification`, `list_channels`,
+`check_gateway_health` -- so an agent (Claude Code, Claude Desktop, any MCP
+client) can push notifications and check the gateway as tool calls instead
+of hand-rolled HTTP. It's a thin client of the already-running gateway (no
+direct Redis access). See
+[`clients/mcp/install.md`](./clients/mcp/install.md) for the full setup
+(`claude mcp add` command + generic `mcpServers` JSON config).
+
 ## Development
 
 ```bash

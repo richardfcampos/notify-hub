@@ -14,6 +14,7 @@
     "test:integration": "vitest run test/integration/bullmq-retry.integration.test.ts",
     "start:api": "node dist/bin/api.js",
     "start:worker": "node dist/bin/worker.js",
+    "start:mcp": "node dist/bin/mcp.js",
     "dev:api": "tsx src/bin/api.ts",
     "dev:worker": "tsx src/bin/worker.ts"
   },
