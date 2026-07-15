@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 2,
+  "next_id": 4,
   "lessons": [
     {
       "id": "L-001",
@@ -22,6 +22,44 @@
       ],
       "created": "2026-07-15T06:10:41Z",
       "last_seen": "2026-07-15T06:10:41Z"
+    },
+    {
+      "id": "L-002",
+      "key": "spec_precision_gap::entrypoint level fail fast behavior env validation process exit must be extracted into a testable function or covered by a dedicated spawn test",
+      "text": "Entrypoint-level fail-fast behavior (env validation, process.exit) must be extracted into a testable function or covered by a dedicated spawn test.",
+      "signal": "spec_precision_gap",
+      "scope": "entrypoints",
+      "status": "confirmed",
+      "features": [
+        "notification-gateway",
+        "mcp-server"
+      ],
+      "recurrence": 2,
+      "harmful": 0,
+      "evidence": [
+        ".specs/features/notification-gateway/validation.md (NOTIF-13.4 process.exit untested) (entrypoints)",
+        ".specs/features/mcp-server/validation.md (MCP-04.2 env fail-fast untested) (entrypoints)"
+      ],
+      "created": "2026-07-15T13:09:02Z",
+      "last_seen": "2026-07-15T13:09:02Z"
+    },
+    {
+      "id": "L-003",
+      "key": "spec_precision_gap::schema constraints enums bounds formats need a negative case test asserting rejection not just the constraint existing in code",
+      "text": "Schema constraints (enums, bounds, formats) need a negative-case test asserting rejection, not just the constraint existing in code.",
+      "signal": "spec_precision_gap",
+      "scope": "schemas",
+      "status": "candidate",
+      "features": [
+        "mcp-server"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        ".specs/features/mcp-server/validation.md (MCP priority enum no negative test) (schemas)"
+      ],
+      "created": "2026-07-15T13:09:02Z",
+      "last_seen": "2026-07-15T13:09:02Z"
     }
   ]
 }

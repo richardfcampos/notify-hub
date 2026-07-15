@@ -1,7 +1,7 @@
 # MCP Server Tasks
 
 **Spec**: `.specs/features/mcp-server/spec.md`
-**Status**: In Progress
+**Status**: Done — validated (Verifier PASS, iteration 1)
 **Scope**: Medium — 1 phase, 3 tasks, design inline (thin stdio client over the gateway HTTP API, per AD-012).
 
 ## Test Coverage Matrix (inherits notification-gateway conventions)

@@ -43,5 +43,8 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 **Phase 1 notes:** ESM + TS, Vitest. TOKENS format = `name:token:ch1,ch2` entries separated by `;`. Deps bumped for security: nodemailer@9.0.3, vitest@4.1.10 (npm audit clean).
 
 **Remote:** published — https://github.com/richardfcampos/notify-hub (public, `main` tracks `origin/main`).
-**Optional follow-ups:** wire NOTIF-01.4 no-hang timeout assertion (accepted spec-precision), quiet-hours/DND, web dashboard (Deferred Ideas in context.md).
+
+**Feature 2 — mcp-server: COMPLETE & VALIDATED.** Commits 36f07f0 (GET /channels), 209657e (MCP server + 3 tools), 97d781a (stdio entrypoint + docs). 124 tests pass. Verifier PASS iteration 1 (sensor 5/5 killed). SDK @modelcontextprotocol/sdk@1.29.0. Tools: send_notification, list_channels, check_gateway_health. Register via `clients/mcp/install.md`.
+**Lessons:** L-001 candidate (queue reliability tests), L-002 CONFIRMED (entrypoint fail-fast must be testable — recurred in both features), L-003 candidate (schema negative tests).
+**Optional follow-ups:** entrypoint spawn tests + priority-enum negative test (accepted minor gaps, see both validation.md); NOTIF-01.4 no-hang assertion; quiet-hours/DND; web dashboard (Deferred Ideas in context.md).
 **Open questions:** none.
