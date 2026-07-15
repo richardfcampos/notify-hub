@@ -1,0 +1,155 @@
+/* Dark dev-dashboard theme (ADMIN-07): near-black background, elevated
+   cards with subtle borders, one accent color used sparingly, green/red
+   reserved for status semantics. System font stack + monospace for
+   keys/tokens/log lines. No external fonts/CDN.
+   Split from a single admin.css: this file holds the design tokens, resets,
+   topbar and page layout scaffolding. See admin-controls.css (buttons,
+   inputs, switches, channel cards) and admin-sections.css (profiles,
+   deliveries, toasts, save bar) for the rest. */
+
+:root {
+  --bg: #0b0e14;
+  --bg-elev: #141a24;
+  --bg-input: #0f141d;
+  --border: #232b3a;
+  --text: #e6e9ef;
+  --text-muted: #8b95a7;
+  --accent: #2dd4bf;
+  --accent-ink: #04201c;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --radius: 10px;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding-bottom: 90px;
+}
+
+h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+button,
+input {
+  font-family: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* ---- Topbar ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(11, 14, 20, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon {
+  color: var(--accent);
+  display: inline-flex;
+}
+
+.brand-name {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+}
+
+.pill-up {
+  color: var(--success);
+  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.pill-down {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ---- Page layout ---- */
+.layout {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.panel {
+  margin-bottom: 28px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.panel-header h2 {
+  margin: 0;
+}
+
+.banner {
+  background: rgba(45, 212, 191, 0.08);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  font-size: 0.85rem;
+}
+
+.empty-state {
+  font-size: 0.85rem;
+  margin: 4px 0;
+}
