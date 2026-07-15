@@ -50,3 +50,15 @@ Phase 2 (UI+wire):  A4 → A5
 ## Validation
 
 Verifier runs automatically after A5 (author ≠ verifier): spec-anchored coverage ADMIN-01..07 + discrimination sensor; writes `.specs/features/admin-panel/validation.md`.
+
+## Amendment 1 tasks
+
+### D1: env-configurable host/paths + apply scoping ✅
+**What**: `startAdminServer` accepts `host` option (default `127.0.0.1`); `src/bin/admin.ts` reads `ADMIN_HOST`/`ENV_FILE_PATH`/`COMPOSE_DIR`/`NOTIFY_GATEWAY_URL` and wires them through `AdminServerDeps.composeDir`/`gatewayBaseUrl` instead of routes reading `process.cwd()`/localhost directly; apply-route scoped to `docker compose up -d --no-build api worker` (never the admin service itself).
+**Requirement**: ADMIN-01 (revised), ADMIN-08.2/.3/.4 · **Tests**: unit/e2e · **Gate**: full
+**Commit**: `feat(admin): env-configurable host, paths and gateway url; scope apply to gateway services`
+
+### D2: compose service + Dockerfile stage + invariant test + docs + live smoke ✅
+**What**: Dockerfile `admin` stage (docker-cli + docker-cli-compose); docker-compose.yml top-level `name: notify-hub` + `admin` service (host port pinned `127.0.0.1:8081`, directory bind-mount, docker.sock mount); `src/admin/compose-invariants.test.ts` asserts the port pinning + project name straight from `docker-compose.yml`; README/.env.example updated. Live smoke verified end-to-end against the real stack.
+**Requirement**: ADMIN-08 · **Tests**: unit (compose-invariants) · **Gate**: build + full
+**Commit**: `feat(docker): admin panel as a compose service`
