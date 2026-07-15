@@ -64,6 +64,8 @@ export interface ChannelRegistryEntry {
   factory: ChannelFactory
   /** Env keys that MUST be present for this channel when it is enabled. */
   requiredConfig: string[]
+  /** Max message length before TruncatingChannel truncates. Unset = no limit. */
+  maxLength?: number
 }
 
 /** Fully validated application configuration (see config/load-config.ts). */
