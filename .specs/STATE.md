@@ -20,6 +20,7 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 | AD-010 | Architecture = Ports & Adapters (Hexagonal): Strategy channels + Registry-Factory + Decorator cross-cutting, DI composition root | Mockable + one interface + endless pluggability (user ask) | User |
 | AD-011 | Queue topology = two-stage (dispatch job → one delivery job per channel); retry/backoff/dead-letter native to BullMQ, per channel | No duplicate sends + per-channel DLQ (Approach 1) | User |
 | AD-012 | MCP surface = thin stdio client (official `@modelcontextprotocol/sdk`, TS) over the gateway HTTP API; same repo, `src/mcp/` + `src/bin/mcp.ts`; NOTIFY_URL/NOTIFY_TOKEN env, fail-fast | Reuses gateway auth/queue; no queue coupling in MCP process; user asked "acessível por MCP" | User |
+| AD-013 | Admin panel = host-side app (`npm run admin`, Fastify on 127.0.0.1:8081 ONLY, no auth); `.env` stays the source of truth (canonical rewrite + timestamped backup, comments not preserved); apply = `docker compose up -d` via CommandRunner port; UI = vanilla dark dashboard, secrets masked client-side with reveal | User decisions (placement/access/visual); keeps AD "config = env, fail-fast"; containers immutable | User |
 
 ---
 
