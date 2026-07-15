@@ -62,11 +62,14 @@ services:
       context: .
       target: admin
     ports:
-      # Host side MUST stay pinned to 127.0.0.1 -- the LAN-unreachable
-      # invariant (ADMIN-01.2), asserted by
-      # src/admin/compose-invariants.test.ts. The container listens on
-      # 0.0.0.0 internally (ADMIN_HOST below) so this mapping can reach it.
-      - "127.0.0.1:${ADMIN_PORT:-8081}:${ADMIN_PORT:-8081}"
+      # Default bind 0.0.0.0 matches every other service on this host, so
+      # the panel is reachable from the owner's other devices (e.g. over
+      # Tailscale as intel:8081). The panel exposes secrets without auth:
+      # anyone who can reach this port can read and rewrite the config.
+      # Set ADMIN_BIND=127.0.0.1 in .env to make it localhost-only again.
+      # The explicit bind template is asserted by
+      # src/admin/compose-invariants.test.ts.
+      - "${ADMIN_BIND:-0.0.0.0}:${ADMIN_PORT:-8081}:${ADMIN_PORT:-8081}"
     env_file:
       - path: .env
         required: false

@@ -168,13 +168,16 @@ npm run admin
 # => admin panel: http://127.0.0.1:8081
 ```
 
-Binds `127.0.0.1` only -- no password, no remote access; the trust boundary
-is "runs on this machine" (override the port with `ADMIN_PORT` in your
-shell environment, not in `.env`). In compose, the `admin` container
-listens on `0.0.0.0` internally so the port mapping can reach it, but the
-mapping itself is pinned `127.0.0.1:8081:8081` on the host side, so the
-panel is never reachable from the LAN either way (asserted by
-`src/admin/compose-invariants.test.ts`).
+**Reachability:** in compose the host-side bind defaults to `0.0.0.0`
+(like the other services on a typical homelab host), so the panel is
+reachable from your other devices -- e.g. over a Tailscale tailnet as
+`http://<machine>:8081`. **The panel has no auth and displays secrets**,
+so anyone who can reach the port can read and rewrite your config: keep
+that surface to networks you trust (a WireGuard/Tailscale tailnet is a
+good fit; an untrusted LAN is not). Set `ADMIN_BIND=127.0.0.1` in `.env`
+to make it localhost-only. The explicit bind template is asserted by
+`src/admin/compose-invariants.test.ts`. The host-side dev mode
+(`npm run admin`) binds `127.0.0.1` by default regardless.
 
 **Docker-socket trade-off:** the `admin` service mounts
 `/var/run/docker.sock` so Save & Apply can run
@@ -182,9 +185,9 @@ panel is never reachable from the LAN either way (asserted by
 inside the container (it never recreates the `admin` service itself --
 that would kill the container mid-request). This gives the admin
 container control of the host's Docker daemon, the same pattern used by
-tools like Portainer. Accepted because the panel is a personal,
-localhost-bound tool with no auth of its own -- the trust boundary is
-already "whoever has shell access to this machine".
+tools like Portainer. Accepted because the panel is a personal tool on a
+trusted network -- combined with the reachability note above, treat
+"who can open the panel" as "who can administer this Docker host".
 
 ## Development
 

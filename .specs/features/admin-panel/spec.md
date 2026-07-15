@@ -126,3 +126,14 @@ User decision: no `npm run admin` required — `docker compose up -d` must bring
 | Requirement ID | Story | Status |
 | -------------- | ----- | ------ |
 | ADMIN-08 | Dockerized admin service | Pending |
+
+---
+
+## Amendment 2 — Admin reachable from the owner's devices (2026-07-15)
+
+User decision (supersedes Amendment 1's revised ADMIN-01.2): the panel must be reachable from their other machines like every other service on this host — e.g. `intel:8081` over their Tailscale tailnet from the M1. Evidence gathered live: all other services on this host publish `0.0.0.0` (postgres, rabbitmq, mcp-manager, nginx…), and `intel` resolves via Tailscale MagicDNS.
+
+### ADMIN-01.2 (re-revised)
+1. The compose host-side bind SHALL be an explicit, env-overridable template — `"${ADMIN_BIND:-0.0.0.0}:…"` — defaulting to `0.0.0.0` (house convention), re-pinnable to `127.0.0.1` via one env var. The explicit template (never a silent hardcoded bind in either direction) SHALL be test-asserted.
+
+**Accepted trade-off (recorded):** with the default bind, any device that can reach this host's port 8081 (LAN + tailnet) can read and rewrite all credentials — no auth (user previously declined a password; convention matches their other unauthenticated services e.g. Postgres/RabbitMQ on 0.0.0.0). Mitigations available, not applied: `ADMIN_BIND=127.0.0.1`, or a future `ADMIN_PASSWORD` basic-auth gate (deferred idea).

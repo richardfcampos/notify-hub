@@ -1,11 +1,14 @@
 /**
- * Test-asserted invariant from spec Amendment 1, revised ADMIN-01.2: the
- * dockerized admin service's host-side port mapping must stay pinned to
- * 127.0.0.1 (never LAN-reachable) even though the container listens on
- * 0.0.0.0 internally, and the compose project name must be pinned so
- * `docker compose` invoked from inside the admin container (against the
- * same bind-mounted directory, at a different path) manages this exact
- * stack instead of a duplicate one (ADMIN-08.2).
+ * Test-asserted invariants from spec Amendments 1 and 2. The admin
+ * service's host-side bind must stay an EXPLICIT, env-overridable
+ * template (`${ADMIN_BIND:-0.0.0.0}`): the default matches the host's
+ * other services (reachable from the owner's devices, e.g. Tailscale),
+ * and re-pinning to localhost is one env var away -- what must never
+ * happen is a silent hardcoded bind in either direction. The compose
+ * project name must be pinned so `docker compose` invoked from inside
+ * the admin container (against the same bind-mounted directory, at a
+ * different path) manages this exact stack instead of a duplicate one
+ * (ADMIN-08.2).
  *
  * Parses docker-compose.yml with plain text/regex rather than a YAML
  * parser dependency -- deliberately narrow (just the two asserted facts),
@@ -74,14 +77,14 @@ function extractYamlListValues(serviceBlock: string, key: string): string[] {
   return values
 }
 
-describe('docker-compose.yml invariants (spec Amendment 1, revised ADMIN-01.2 / ADMIN-08.2)', () => {
-  it("pins the admin service's port mapping host-side to 127.0.0.1 (LAN-unreachable invariant)", () => {
+describe('docker-compose.yml invariants (spec Amendments 1 and 2 / ADMIN-08.2)', () => {
+  it("binds the admin service's host side via the explicit overridable ADMIN_BIND template (default 0.0.0.0)", () => {
     const adminBlock = extractServiceBlock(readCompose(), 'admin')
     const ports = extractYamlListValues(adminBlock, 'ports')
 
     expect(ports.length).toBeGreaterThan(0)
     for (const port of ports) {
-      expect(port.startsWith('127.0.0.1:')).toBe(true)
+      expect(port.startsWith('${ADMIN_BIND:-0.0.0.0}:')).toBe(true)
     }
   })
 
