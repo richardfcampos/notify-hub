@@ -22,17 +22,17 @@ Phase 1 (backend):  A1 → A2 → A3
 Phase 2 (UI+wire):  A4 → A5
 ```
 
-### A1: env-file store + config model
+### A1: env-file store + config model ✅
 **What**: `src/admin/env-file-store.ts` — `FileStore` port + Node fs impl; parse `.env` → `AdminConfig` {channels: enabled+values per registry entry, profiles from TOKENS, extraKeys passthrough}; serialize back canonically; atomic write (tmp+rename) with timestamped `.backup.*`; missing file → empty model. Reuses `channelRegistry` for the per-channel key schema.
 **Requirement**: ADMIN-02, ADMIN-03 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(admin): env file store with round-trip and backups`
 
-### A2: admin server + config routes
+### A2: admin server + config routes ✅
 **What**: `src/admin/admin-server.ts` — `buildAdminServer(deps)` (Fastify, serves static UI dir + JSON API); `GET /api/config`; `PUT /api/config` validating: enabled channel missing required key → 400 naming channel+key, profile defaultChannel not enabled → 400 naming it; on valid → backup + write via FileStore (no write on validation failure). Binding: listen host hardcoded `127.0.0.1` (test asserts). e2e via inject with in-memory FileStore fake.
 **Requirement**: ADMIN-01, ADMIN-02, ADMIN-03 · **Tests**: e2e · **Gate**: full
 **Commit**: `feat(admin): config API with fail-fast validation`
 
-### A3: apply, status and test-send routes
+### A3: apply, status and test-send routes ✅
 **What**: `CommandRunner` port (`run(cmd, args) → {code, stdout, stderr}`) + real impl (execFile); `POST /api/apply` → `docker compose up -d` outcome; `GET /api/status` → gateway `/health` + `/channels` (HttpClient, first profile token) + last worker delivery lines (`docker compose logs worker --since 10m` parsed for channel sent/failed); `POST /api/test-send {channel}` → POST `/notify` (channels:[channel]) then poll logs (~10s) for that channel's newest result → `{ok, detail}`; gateway unreachable → clear error, no hang. All fakes-injected tests.
 **Requirement**: ADMIN-04, ADMIN-05, ADMIN-06 · **Tests**: e2e/unit · **Gate**: full
 **Commit**: `feat(admin): apply, status and per-channel test-send`
