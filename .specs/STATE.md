@@ -31,7 +31,7 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 
 **Progress:**
 - [x] Phase 1 — Foundation (T1-T3) — commits 8b34ee2, e09eac1, 5752920; 6 unit tests pass
-- [ ] Phase 2 — Channels (T4-T9)
+- [x] Phase 2 — Channels (T4-T9) — commits 31013e9, 8bd7f7f, fea3cd6, ab9ead7, 35bcb0e, f1e364d; 37 unit tests pass. Per-adapter registry entries (ntfyRegistryEntry…), ChannelBuilder.buildActive static, FetchHttpClient handles string+object bodies. ChannelRegistryEntry gained optional maxLength.
 - [ ] Phase 3 — Queue/dispatch/delivery (T10-T13)
 - [ ] Phase 4 — API + wiring + integration (T14-T18)
 - [ ] Phase 5 — Docker + hook + docs + T22/T24 (T19-T24)
