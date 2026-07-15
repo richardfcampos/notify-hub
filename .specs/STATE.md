@@ -46,6 +46,8 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 **Remote:** published — https://github.com/richardfcampos/notify-hub (public, `main` tracks `origin/main`).
 
 **Feature 2 — mcp-server: COMPLETE & VALIDATED.** Commits 36f07f0 (GET /channels), 209657e (MCP server + 3 tools), 97d781a (stdio entrypoint + docs). 124 tests pass. Verifier PASS iteration 1 (sensor 5/5 killed). SDK @modelcontextprotocol/sdk@1.29.0. Tools: send_notification, list_channels, check_gateway_health. Register via `clients/mcp/install.md`.
+**Feature 3 — admin-panel: COMPLETE & VALIDATED.** Host-side dark dashboard (`npm run admin` → 127.0.0.1:8081): channels + credentials (masked/reveal), token profiles, Save & Apply (validate → backup → write .env → compose up), per-channel test-send with real worker outcome, status + recent deliveries. 185 tests. Verifier PASS iteration 1 (sensor 5/5 killed; security spot-checks clean). Commits 54a633e..53ffe38.
+**Live debugging fixes shipped:** ntfy UTF-8 via JSON publish (4b0bed2); CallMeBot 2xx-error body detection with secret-redacted messages (a8a772d). User's WhatsApp works with phone exactly as CallMeBot activation echoes it (557999957286, no + / no extra 9).
 **Lessons:** L-001 candidate (queue reliability tests), L-002 CONFIRMED (entrypoint fail-fast must be testable — recurred in both features), L-003 candidate (schema negative tests).
 **Optional follow-ups:** entrypoint spawn tests + priority-enum negative test (accepted minor gaps, see both validation.md); NOTIF-01.4 no-hang assertion; quiet-hours/DND; web dashboard (Deferred Ideas in context.md).
 **Open questions:** none.

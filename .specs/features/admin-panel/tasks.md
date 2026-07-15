@@ -1,7 +1,7 @@
 # Admin Panel Tasks
 
 **Spec**: `.specs/features/admin-panel/spec.md`
-**Status**: Implementation complete (pending validation)
+**Status**: Done — validated (Verifier PASS, iteration 1)
 **Scope**: Large-ish — 2 phases, 5 tasks. Design inline: host-side Fastify app (`src/admin/`), Ports & Adapters like the rest of the repo — new ports `FileStore` (read/write/backup .env) and `CommandRunner` (compose/logs), gateway reached via existing `HttpClient` port. UI = vanilla dark dashboard served as static files.
 
 ## Test Coverage Matrix (inherits project conventions)
