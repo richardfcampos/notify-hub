@@ -41,5 +41,6 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 
 **Phase 1 notes:** ESM + TS, Vitest. TOKENS format = `name:token:ch1,ch2` entries separated by `;`. Deps bumped for security: nodemailer@9.0.3, vitest@4.1.10 (npm audit clean).
 
-**Next step (deferred per user):** create GitHub remote + push. Optional follow-ups: wire NOTIF-01.4 no-hang timeout assertion (accepted spec-precision), quiet-hours/DND, web dashboard (Deferred Ideas in context.md).
+**Remote:** published — https://github.com/richardfcampos/notify-hub (public, `main` tracks `origin/main`).
+**Optional follow-ups:** wire NOTIF-01.4 no-hang timeout assertion (accepted spec-precision), quiet-hours/DND, web dashboard (Deferred Ideas in context.md).
 **Open questions:** none.
