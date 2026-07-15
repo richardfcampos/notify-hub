@@ -131,79 +131,79 @@ T2  → T20 ├→ T21 → T23
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(config): env loader with fail-fast channel validation`
 
-### T4: Channel builder + decorators + test fakes
+### T4: Channel builder + decorators + test fakes ✅
 **What**: `ChannelBuilder.buildActive(registry, enabled, channelConfig, deps)` (unknown→throw, missing cred→throw, factory→wrap decorators→Map); `TruncatingChannel`, `LoggingChannel`; shared test fakes `FakeHttpClient`, `FakeMailTransport`, `FakeClock`, `FakeLogger`.
 **Where**: `src/channels/channel-builder.ts`, `src/channels/decorators/truncating-channel.ts`, `src/channels/decorators/logging-channel.ts`, `test/helpers/fakes.ts` (+ `.test.ts`)
 **Depends on**: T2, T3
 **Requirement**: NOTIF-03, NOTIF-10
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Unknown channel name → throws; missing-cred → throws naming key
-- [ ] `TruncatingChannel` truncates to configured limit then delegates
-- [ ] `LoggingChannel` logs attempt+outcome and delegates (does not swallow throws)
-- [ ] Fakes usable by adapter tests
-- [ ] Unit tests cover build cases + both decorators; `npm run test:unit` passes
+- [x] Unknown channel name → throws; missing-cred → throws naming key
+- [x] `TruncatingChannel` truncates to configured limit then delegates
+- [x] `LoggingChannel` logs attempt+outcome and delegates (does not swallow throws)
+- [x] Fakes usable by adapter tests
+- [x] Unit tests cover build cases + both decorators; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): registry builder + decorators + test fakes`
 
-### T5: ntfy adapter [P]
+### T5: ntfy adapter [P] ✅
 **What**: `NtfyChannel implements NotificationChannel` — POST publish to `NTFY_URL`/topic with title/message/priority/tags via injected `HttpClient`; register entry (`requiredConfig: NTFY_URL, NTFY_TOPIC`).
 **Where**: `src/channels/adapters/ntfy-channel.ts` (+ `.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-05
 **Tools**: MCP: `context7`/`docs-seeker` (verify ntfy publish API) · Skill: NONE
 **Done when**:
-- [ ] Sends correct URL + headers + body (assert via FakeHttpClient)
-- [ ] Non-2xx response → throws
-- [ ] Unit tests: happy + 5xx + timeout; `npm run test:unit` passes
+- [x] Sends correct URL + headers + body (assert via FakeHttpClient)
+- [x] Non-2xx response → throws
+- [x] Unit tests: happy + 5xx + timeout; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): ntfy adapter`
 
-### T6: Telegram adapter [P]
+### T6: Telegram adapter [P] ✅
 **What**: `TelegramChannel` — POST Bot API `sendMessage` to `TELEGRAM_CHAT_ID`; register (`requiredConfig: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID`).
 **Where**: `src/channels/adapters/telegram-channel.ts` (+ `.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-06
 **Tools**: MCP: `context7`/`docs-seeker` (Telegram Bot API) · Skill: NONE
 **Done when**:
-- [ ] Correct `sendMessage` URL+payload (FakeHttpClient); non-2xx → throws
-- [ ] Unit tests: happy + error; `npm run test:unit` passes
+- [x] Correct `sendMessage` URL+payload (FakeHttpClient); non-2xx → throws
+- [x] Unit tests: happy + error; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): telegram adapter`
 
-### T7: Email adapter + nodemailer transport [P]
+### T7: Email adapter + nodemailer transport [P] ✅
 **What**: `EmailChannel` using injected `MailTransport`; `NodemailerTransport` impl wrapping nodemailer (SMTP from env). Register (`requiredConfig: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_TO`).
 **Where**: `src/channels/adapters/email-channel.ts`, `src/transports/nodemailer-transport.ts` (+ `email-channel.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-07
 **Tools**: MCP: `context7`/`docs-seeker` (nodemailer) · Skill: NONE
 **Done when**:
-- [ ] `EmailChannel.send` calls `MailTransport.send` with correct to/subject/text (FakeMailTransport); transport error → throws
-- [ ] Unit tests: happy + error; `npm run test:unit` passes
+- [x] `EmailChannel.send` calls `MailTransport.send` with correct to/subject/text (FakeMailTransport); transport error → throws
+- [x] Unit tests: happy + error; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): email (SMTP) adapter`
 
-### T8: Slack adapter [P]
+### T8: Slack adapter [P] ✅
 **What**: `SlackChannel` — POST to `SLACK_WEBHOOK_URL` incoming webhook. Register (`requiredConfig: SLACK_WEBHOOK_URL`).
 **Where**: `src/channels/adapters/slack-channel.ts` (+ `.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-08
 **Tools**: MCP: `context7`/`docs-seeker` (Slack incoming webhook) · Skill: NONE
 **Done when**:
-- [ ] Correct webhook payload (FakeHttpClient); non-2xx → throws
-- [ ] Unit tests: happy + error; `npm run test:unit` passes
+- [x] Correct webhook payload (FakeHttpClient); non-2xx → throws
+- [x] Unit tests: happy + error; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): slack adapter`
 
-### T9: Discord adapter [P]
+### T9: Discord adapter [P] ✅
 **What**: `DiscordChannel` — POST to `DISCORD_WEBHOOK_URL` incoming webhook. Register (`requiredConfig: DISCORD_WEBHOOK_URL`).
 **Where**: `src/channels/adapters/discord-channel.ts` (+ `.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-09
 **Tools**: MCP: `context7`/`docs-seeker` (Discord webhook) · Skill: NONE
 **Done when**:
-- [ ] Correct webhook payload (FakeHttpClient); non-2xx → throws
-- [ ] Unit tests: happy + error; `npm run test:unit` passes
+- [x] Correct webhook payload (FakeHttpClient); non-2xx → throws
+- [x] Unit tests: happy + error; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): discord adapter`
 
