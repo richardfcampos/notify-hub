@@ -33,7 +33,7 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 - [x] Phase 1 — Foundation (T1-T3) — commits 8b34ee2, e09eac1, 5752920; 6 unit tests pass
 - [x] Phase 2 — Channels (T4-T9) — commits 31013e9, 8bd7f7f, fea3cd6, ab9ead7, 35bcb0e, f1e364d; 37 unit tests pass. Per-adapter registry entries (ntfyRegistryEntry…), ChannelBuilder.buildActive static, FetchHttpClient handles string+object bodies. ChannelRegistryEntry gained optional maxLength.
 - [x] Phase 3 — Queue/dispatch/delivery (T10-T13) — commits 38eb283, 1cfd815, 3bba4b9, 246118d; 53 unit tests pass. InMemoryQueue.deliveries[] = partial-failure seam. DispatchService({queue,logger,activeChannels,resolveProfile}); DeliveryService({channels:Map,clock,logger}); BullMqQueue({redisUrl,retry}). Added package.json overrides.ioredis=$ioredis (BullMQ TS fix).
-- [ ] Phase 4 — API + wiring + integration (T14-T18)
+- [x] Phase 4 — API + wiring + integration (T14-T18) — commits f7a0162, ec7ad20, 4ad862b, 6a019c4, fd4bd75; 79 tests pass (unit+e2e+integration). buildContainer(config,overrides?)→{queue,buildServerDeps(),registerWorkers(),close()}. channel-registry.ts exports channelRegistry + requiredConfigByChannel (ntfy/telegram/email/slack/discord). Fan-out integration test proves partial-failure isolation. ⚠️ BUILD PATH: tsconfig rootDir="." emits dist/src/bin/*.js but start scripts point to dist/bin/*.js — Phase 5 (T19 docker) MUST reconcile. /health is unauthenticated (for compose healthcheck).
 - [ ] Phase 5 — Docker + hook + docs + T22/T24 (T19-T24)
 - [ ] Verifier
 
