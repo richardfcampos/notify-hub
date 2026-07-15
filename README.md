@@ -48,8 +48,10 @@ client (curl / hook script)
 
 ```bash
 git clone https://github.com/richardfcampos/notify-hub.git && cd notify-hub
-cp .env.example .env
-# edit .env: set TOKENS, CHANNELS_ENABLED, and creds for the channels you want
+./scripts/setup-env.sh   # guided setup: prompts for each channel's credentials
+                         # (hidden input), generates your gateway token, writes
+                         # .env with chmod 600. Or do it by hand:
+                         #   cp .env.example .env && $EDITOR .env
 docker compose up -d --build
 curl http://localhost:8080/health
 # => {"status":"ok","redis":true}
