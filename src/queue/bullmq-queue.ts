@@ -5,8 +5,8 @@
  * comes from BullMQ job options (attempts + exponential backoff, spec
  * NOTIF-02.2); `removeOnFail: false` keeps a job whose retries are
  * exhausted in the failed set as the dead-letter (spec NOTIF-02.3) instead
- * of dropping it. No unit test (needs real Redis) -- behavior is verified
- * by the Phase 5 docker smoke; this file only needs to build cleanly.
+ * of dropping it. Retry and dead-letter behavior is verified against a real
+ * Redis by test/integration/bullmq-retry.integration.test.ts.
  */
 import { Queue, Worker } from 'bullmq'
 import type { Job } from 'bullmq'
