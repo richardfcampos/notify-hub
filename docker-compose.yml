@@ -1,0 +1,51 @@
+# Full self-hosted stack (spec NOTIF-12): redis (durable queue backing
+# store), api (accepts POST /notify, enqueues dispatch jobs), worker
+# (processes dispatch + delivery jobs against the channel adapters).
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  api:
+    build: .
+    command: node dist/bin/api.js
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      # alpine has no curl; use Node's global fetch against our own /health.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch(`http://localhost:$${process.env.PORT||8080}/health`).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    build: .
+    command: node dist/bin/worker.js
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis-data:
