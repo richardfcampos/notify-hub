@@ -2,7 +2,7 @@
 
 Pushes a notification to your phone/desktop (via notify-hub) whenever Claude
 Code starts a task, finishes a task, or needs your input -- globally, across
-every project (spec NOTIF-13).
+every project.
 
 ## 1. Start the gateway first
 

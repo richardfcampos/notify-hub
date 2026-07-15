@@ -1,7 +1,34 @@
 {
   "name": "notify-hub",
   "version": "0.1.0",
-  "description": "Self-hosted, free, multi-channel notification gateway (ntfy, Telegram, Email, Slack, Discord, WhatsApp) with token auth and a durable queue.",
+  "description": "Self-hosted, free, multi-channel notification gateway (ntfy, Telegram, Email, Slack, Discord, WhatsApp) with token auth and a durable queue. Ships a Claude Code hook and an MCP server.",
+  "license": "MIT",
+  "author": "Richard Campos",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richardfcampos/notify-hub.git"
+  },
+  "homepage": "https://github.com/richardfcampos/notify-hub#readme",
+  "bugs": {
+    "url": "https://github.com/richardfcampos/notify-hub/issues"
+  },
+  "keywords": [
+    "notifications",
+    "push-notifications",
+    "self-hosted",
+    "notification-gateway",
+    "ntfy",
+    "telegram",
+    "discord",
+    "slack",
+    "whatsapp",
+    "webhook",
+    "bullmq",
+    "fastify",
+    "claude-code",
+    "mcp",
+    "mcp-server"
+  ],
   "type": "module",
   "private": true,
   "engines": {

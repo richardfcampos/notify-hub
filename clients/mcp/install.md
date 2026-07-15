@@ -3,7 +3,7 @@
 Exposes notify-hub as three MCP tools (`send_notification`, `list_channels`,
 `check_gateway_health`) over stdio, so an agent (Claude Code, Claude
 Desktop, any MCP client) can push notifications and check the gateway
-without hand-rolling HTTP requests (spec MCP-04).
+without hand-rolling HTTP requests.
 
 The MCP server is a **thin client of the running gateway** -- it does not
 talk to Redis/BullMQ itself, so the gateway (`docker compose up`) must

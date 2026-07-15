@@ -1,5 +1,12 @@
 # notify-hub
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Docker Compose](https://img.shields.io/badge/Docker-compose%20up-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
+[![MCP](https://img.shields.io/badge/MCP-server-8A2BE2)](./clients/mcp/install.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
+
 Self-hosted, free, multi-channel notification gateway. `POST` one message
 with a token and it fans out -- asynchronously, via a durable queue -- to
 every channel you've enabled: ntfy, Telegram, Email, Slack, Discord,
@@ -40,7 +47,7 @@ client (curl / hook script)
 ## Quickstart
 
 ```bash
-git clone <this-repo> notify-hub && cd notify-hub
+git clone https://github.com/richardfcampos/notify-hub.git && cd notify-hub
 cp .env.example .env
 # edit .env: set TOKENS, CHANNELS_ENABLED, and creds for the channels you want
 docker compose up -d --build
@@ -158,3 +165,24 @@ topic:
 If your environment can't reach the public internet (ntfy.sh), point
 `NTFY_URL` at a self-hosted ntfy instance instead and repeat the same smoke
 steps.
+
+## Contributing
+
+Contributions are welcome — the most useful one is a new channel adapter.
+Each channel is a small self-contained file implementing one interface:
+
+1. Add `src/channels/adapters/<name>-channel.ts` implementing
+   `NotificationChannel` (a single `send(notification)` method) plus its
+   `ChannelRegistryEntry` (factory + required env keys).
+2. Register it with one line in `src/channels/channel-registry.ts`.
+3. Add unit tests next to it (happy path + error path, using the fakes in
+   `test/helpers/fakes.ts` — no real network in tests).
+4. `npm run test:unit` must pass; open a PR.
+
+Ideas: Gotify, Matrix, Pushover, Signal, Mattermost, Rocket.Chat, SMS
+gateways. Bug reports and docs fixes are equally appreciated —
+[open an issue](https://github.com/richardfcampos/notify-hub/issues).
+
+## License
+
+[MIT](./LICENSE) © Richard Campos
