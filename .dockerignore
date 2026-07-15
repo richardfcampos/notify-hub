@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.git
+.gitnexus
+.env
+*.log
+test
+.specs
+plans
