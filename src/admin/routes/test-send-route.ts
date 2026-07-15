@@ -45,7 +45,7 @@ export function registerTestSendRoute(app: FastifyInstance, deps: AdminServerDep
       return reply.code(500).send({ error: 'admin server misconfigured: no HttpClient provided' })
     }
 
-    const gatewayContext = buildGatewayContext(cfg)
+    const gatewayContext = buildGatewayContext(cfg, deps.gatewayBaseUrl)
     const sentAt = Date.now()
 
     const notifyOutcome = await sendTestNotification(deps.http, gatewayContext, channel)
@@ -64,7 +64,7 @@ export function registerTestSendRoute(app: FastifyInstance, deps: AdminServerDep
     const delay = deps.delay ?? realDelay
 
     for (let attempt = 0; attempt < attempts; attempt++) {
-      const events = await fetchWorkerDeliveryEvents(deps.commandRunner, process.cwd())
+      const events = await fetchWorkerDeliveryEvents(deps.commandRunner, deps.composeDir ?? process.cwd())
       const match = events
         .filter((event) => event.channel === channel && (!event.time || Date.parse(event.time) >= sentAt))
         .at(-1)

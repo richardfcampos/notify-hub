@@ -1,13 +1,18 @@
 /**
- * Admin panel Fastify app factory (ADMIN-01). All external seams
- * (FileStore, channel registry, CommandRunner, HttpClient, static UI dir)
- * are injected via AdminServerDeps so tests drive the whole API with
- * `app.inject` over fakes -- no real file, no Docker, no network.
+ * Admin panel Fastify app factory (ADMIN-01, revised by spec Amendment 1).
+ * All external seams (FileStore, channel registry, CommandRunner,
+ * HttpClient, static UI dir) are injected via AdminServerDeps so tests
+ * drive the whole API with `app.inject` over fakes -- no real file, no
+ * Docker, no network.
  *
- * `startAdminServer` is the only place a host/port is chosen: the host is
- * HARDCODED to 127.0.0.1 (never env-overridable, never 0.0.0.0) per the
- * spec's security assumption -- the admin panel's trust boundary is "runs
- * on this machine only".
+ * `startAdminServer` is the only place a host/port is chosen. The host
+ * defaults to 127.0.0.1 (loopback-only, matching the security assumption
+ * for host-mode `npm run admin`) but accepts an explicit `host` option so
+ * `src/bin/admin.ts` can pass `ADMIN_HOST=0.0.0.0` when running inside the
+ * compose `admin` container. When containerized, the LAN-unreachable
+ * invariant moves to the compose port mapping (`127.0.0.1:8081:8081`)
+ * instead of this process (ADMIN-01.2 revised, asserted by
+ * src/admin/compose-invariants.test.ts).
  */
 import Fastify, { type FastifyInstance } from 'fastify'
 import { registerApplyRoute } from './routes/apply-route.js'
@@ -38,16 +43,22 @@ export function buildAdminServer(deps: AdminServerDeps): FastifyInstance {
 }
 
 const DEFAULT_ADMIN_PORT = 8081
-/** Never env-overridable, never 0.0.0.0 (ADMIN-01 security AC). */
-const ADMIN_HOST = '127.0.0.1'
+/** Default host when `opts.host` is omitted: loopback-only (ADMIN-01 security AC for host mode). */
+const DEFAULT_ADMIN_HOST = '127.0.0.1'
 
-/** Builds and starts listening. `port` defaults to `ADMIN_PORT` env var, falling back to 8081. */
+/**
+ * Builds and starts listening. `port` defaults to `ADMIN_PORT` env var,
+ * falling back to 8081. `host` defaults to 127.0.0.1 -- callers (e.g.
+ * `src/bin/admin.ts` reading `ADMIN_HOST`) opt into 0.0.0.0 explicitly for
+ * container mode; this function never picks 0.0.0.0 on its own.
+ */
 export async function startAdminServer(
   deps: AdminServerDeps,
-  opts: { port?: number } = {}
+  opts: { port?: number; host?: string } = {}
 ): Promise<FastifyInstance> {
   const app = buildAdminServer(deps)
   const port = opts.port ?? Number(process.env.ADMIN_PORT ?? DEFAULT_ADMIN_PORT)
-  await app.listen({ host: ADMIN_HOST, port })
+  const host = opts.host ?? DEFAULT_ADMIN_HOST
+  await app.listen({ host, port })
   return app
 }

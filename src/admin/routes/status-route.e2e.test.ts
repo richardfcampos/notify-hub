@@ -64,6 +64,18 @@ describe('GET /api/status', () => {
     })
   })
 
+  it('runs the worker-log tail from the injected composeDir instead of the bare process cwd (ADMIN-08.3)', async () => {
+    const { app, http, commandRunner } = makeApp({ composeDir: '/config' })
+    current = app
+    http.queueResponse({ status: 200, body: JSON.stringify({ status: 'ok' }) })
+    http.queueResponse({ status: 200, body: JSON.stringify({ channels: [], defaultChannels: [] }) })
+    commandRunner.queueResult({ code: 0, stdout: '', stderr: '' })
+
+    await app.inject({ method: 'GET', url: '/api/status' })
+
+    expect(commandRunner.calls[0]?.opts).toEqual({ cwd: '/config' })
+  })
+
   it('reports gateway down without breaking the rest of the response (AC ADMIN-06.2)', async () => {
     const { app, http, commandRunner } = makeApp()
     current = app

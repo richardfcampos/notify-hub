@@ -76,6 +76,21 @@ describe('POST /api/test-send', () => {
     })
   })
 
+  it('polls the worker-log tail from the injected composeDir instead of the bare process cwd (ADMIN-08.3)', async () => {
+    const { app, http, commandRunner } = makeApp({ composeDir: '/config' })
+    current = app
+    http.queueResponse({ status: 202, body: JSON.stringify({ jobId: 'x' }) })
+    commandRunner.queueResult({
+      code: 0,
+      stdout: `worker-1 | ${JSON.stringify({ time: Date.now() + 1000, channel: 'ntfy', msg: 'notification sent' })}`,
+      stderr: ''
+    })
+
+    await app.inject({ method: 'POST', url: '/api/test-send', payload: { channel: 'ntfy' } })
+
+    expect(commandRunner.calls[0]?.opts).toEqual({ cwd: '/config' })
+  })
+
   it('surfaces the real failure reason from worker logs (channel-failure case)', async () => {
     const { app, http, commandRunner } = makeApp()
     current = app

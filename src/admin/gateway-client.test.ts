@@ -33,6 +33,18 @@ describe('buildGatewayContext', () => {
   it('has no token when there are no profiles', () => {
     expect(buildGatewayContext(baseCfg({ profiles: [] })).token).toBeUndefined()
   })
+
+  it('uses the baseUrlOverride (ADMIN-08.4, NOTIFY_GATEWAY_URL) over the derived localhost URL', () => {
+    expect(buildGatewayContext(baseCfg({ extraKeys: { PORT: '9999' } }), 'http://api:8080')).toEqual({
+      baseUrl: 'http://api:8080',
+      token: 'tok-phone'
+    })
+  })
+
+  it('falls back to the derived URL when baseUrlOverride is undefined or blank', () => {
+    expect(buildGatewayContext(baseCfg(), undefined).baseUrl).toBe('http://localhost:8080')
+    expect(buildGatewayContext(baseCfg(), '  ').baseUrl).toBe('http://localhost:8080')
+  })
 })
 
 describe('fetchGatewayStatus', () => {

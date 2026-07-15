@@ -17,11 +17,11 @@ export function registerStatusRoute(app: FastifyInstance, deps: AdminServerDeps)
     const cfg = parseAdminConfig(raw, deps.registry)
 
     const gateway = deps.http
-      ? await fetchGatewayStatus(deps.http, buildGatewayContext(cfg))
+      ? await fetchGatewayStatus(deps.http, buildGatewayContext(cfg, deps.gatewayBaseUrl))
       : { up: false, channels: [], defaultChannels: [] }
 
     const recentDeliveries = deps.commandRunner
-      ? await fetchWorkerDeliveryEvents(deps.commandRunner, process.cwd())
+      ? await fetchWorkerDeliveryEvents(deps.commandRunner, deps.composeDir ?? process.cwd())
       : []
 
     return reply.code(200).send({

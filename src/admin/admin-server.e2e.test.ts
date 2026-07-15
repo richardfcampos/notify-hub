@@ -198,7 +198,7 @@ describe('static UI serving', () => {
 })
 
 describe('startAdminServer binding', () => {
-  it('listens on host 127.0.0.1 (never 0.0.0.0), asserted on the real bound address', async () => {
+  it('defaults to host 127.0.0.1 (never 0.0.0.0) when no host option is given -- the invariant for host mode', async () => {
     const fileStore = new FakeFileStore()
     // Port 0 lets the OS pick a free ephemeral port so this test never
     // collides with anything already listening on 8081.
@@ -208,5 +208,14 @@ describe('startAdminServer binding', () => {
     const address = app.server.address()
     expect(address).not.toBeNull()
     expect(typeof address === 'object' && address !== null ? address.address : null).toBe('127.0.0.1')
+  })
+
+  it('honors an explicit host option (ADMIN-01.2: container mode passes ADMIN_HOST=0.0.0.0)', async () => {
+    const fileStore = new FakeFileStore()
+    const app = await startAdminServer({ fileStore, registry }, { port: 0, host: '0.0.0.0' })
+    current = app
+
+    const address = app.server.address()
+    expect(typeof address === 'object' && address !== null ? address.address : null).toBe('0.0.0.0')
   })
 })

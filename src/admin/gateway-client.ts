@@ -4,7 +4,10 @@
  * FakeHttpClient. `buildGatewayContext` derives the base URL from the
  * admin config's `extraKeys.PORT` (defaulting to 8080, the gateway's own
  * default) and picks the first profile's token, matching the spec
- * assumption "test-send uses the first profile's token".
+ * assumption "test-send uses the first profile's token". `baseUrlOverride`
+ * (ADMIN-08.4, wired from `NOTIFY_GATEWAY_URL`) takes precedence -- used in
+ * compose mode where the gateway lives at `http://api:<port>` instead of
+ * localhost.
  */
 import type { HttpClient } from '../core/ports.js'
 import type { AdminConfig } from './admin-config.js'
@@ -14,10 +17,10 @@ export interface GatewayContext {
   token?: string
 }
 
-export function buildGatewayContext(cfg: AdminConfig): GatewayContext {
+export function buildGatewayContext(cfg: AdminConfig, baseUrlOverride?: string): GatewayContext {
   const port = cfg.extraKeys.PORT?.trim() || '8080'
   return {
-    baseUrl: `http://localhost:${port}`,
+    baseUrl: baseUrlOverride?.trim() || `http://localhost:${port}`,
     token: cfg.profiles[0]?.token
   }
 }
