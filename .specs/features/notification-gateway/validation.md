@@ -9,7 +9,9 @@
 
 ## Verdict
 
-**Overall**: ❌ Not Ready (one P1 acceptance criterion has no verifying evidence)
+> **SUPERSEDED by Iteration 2 (2026-07-15): ✅ PASS.** The single blocker below (NOTIF-02 retry/dead-letter coverage) and the `dedupKey` minor gap are both CLOSED. See the **"Iteration 2 re-verification"** section at the bottom for the new evidence, sensor results, and gate. The Iteration 1 verdict is retained below for history.
+
+**Overall (Iteration 1 — historical)**: ❌ Not Ready (one P1 acceptance criterion has no verifying evidence)
 
 - **Gate**: 106 passed, 0 failed (19 files); `npm run build` (tsc) clean.
 - **Sensor**: 7 mutations injected, **7 killed, 0 survived** — the suite is genuinely discriminating.
@@ -237,3 +239,60 @@ No shallow "was-called" conjunction masking a missing value assertion found.
 3. NOTIF-01.4 "no hang" and NOTIF-13.4 literal `process.exit(0)` — spec-precision, not directly asserted (Minor).
 
 **Next steps**: Route Fix 1 to an implementer (add the retry/dead-letter integration test against ephemeral Redis) and re-verify. Fixes 2–3 are non-blocking; confirm with the user whether `dedupKey` should be wired or removed.
+
+---
+
+# Iteration 2 re-verification
+
+**Date**: 2026-07-15
+**Verifier**: independent sub-agent (author ≠ verifier); read-only over real tree, mutations in throwaway state only (each reverted via `git checkout --`)
+**Fix commits under test**: `959fa38` (wire `dedupKey` → BullMQ `jobId`), `91c2a91` (new `test/integration/bullmq-retry.integration.test.ts` — REAL `BullMqQueue` vs REAL Redis via testcontainers)
+**Verdict**: **✅ PASS** — the Iteration 1 blocker (NOTIF-02.2 / NOTIF-02.3) and the `dedupKey` minor gap are both CLOSED with real, Redis-backed, value-anchored assertions; all sensor faults on the new path are killed; full gate green with the integration test executed (not skipped).
+
+## Closed gaps — spec-anchored evidence (real Redis, testcontainers)
+
+| Criterion (WHEN → THEN) | Spec-defined outcome | `file:line` + assertion | Result |
+| --- | --- | --- | --- |
+| NOTIF-02.2 — transient error → retry w/ exponential backoff up to max attempts | attemptsMade == configured `attempts` (=2), backoff applied | `test/integration/bullmq-retry.integration.test.ts:103` `expect(failed[0]?.attemptsMade).toBe(2)` + `:104` `expect(handlerCalls).toBe(2)` (queue built with `attempts: 2, backoffMs: 50`, `:85`) | ✅ Covered |
+| NOTIF-02.3 — retries exhausted → dead-letter (not dropped) + reason | job parked in failed set, failedReason present | `bullmq-retry.integration.test.ts:101` `expect(failed).toHaveLength(1)` + `:105` `expect(failed[0]?.failedReason).toContain('permanent channel failure')` — reads REAL `deliveryQueue.getFailed()` with `removeOnFail:false` | ✅ Covered |
+| Transient-retry-then-success (retry recovers, not dead-lettered) | 2nd attempt completes; failed set empty | `bullmq-retry.integration.test.ts:131` `expect(handlerCalls).toBe(2)` + `:133` `expect(failed).toHaveLength(0)` | ✅ Covered |
+| Edge case — `dedupKey` collapse via BullMQ jobId (best-effort) | both adds share one job; `jobId === dedupKey`; exactly 1 waiting | `bullmq-retry.integration.test.ts:158` `expect(first.jobId).toBe(dedupKey)` + `:159` `expect(second.jobId).toBe(dedupKey)` + `:160` `expect(await queue.getWaitingDispatchCount()).toBe(1)` | ✅ Covered |
+
+**Wiring confirmed in production code**: `src/queue/bullmq-queue.ts:72` — `const opts = job.dedupKey ? { ...this.jobOpts, jobId: job.dedupKey } : this.jobOpts`, passed to `dispatchQueue.add(...)` at `:73`. `dedupKey` is no longer captured-then-dropped.
+
+**Integration test executed, not skipped**: isolated verbose run showed all 3 cases run with real timing (165ms / 177ms / 10ms), `Tests 3 passed (3)`. `REDIS_TEST_URL` unset → testcontainers `redis:7-alpine` spun up (real Redis). No `.skip(` / `.only(` / `.todo(` anywhere in `test/ src/ clients/`.
+
+## Discrimination Sensor (new BullMQ path — scratch mutations, each reverted)
+
+| # | File:line | Fault injected | Test run | Killed? |
+| --- | --- | --- | --- | --- |
+| 1 | `src/queue/bullmq-queue.ts:58` | `attempts: config.retry.attempts` → `attempts: 1` (ignore retry config) | `bullmq-retry.integration.test.ts` | ✅ Killed — retry/DLQ test `expected 1 to be 2` (attemptsMade); transient-success test also broke (no retry → timeout) |
+| 2 | `src/queue/bullmq-queue.ts:61` | `removeOnFail: false` → `true` (drop exhausted job) | same | ✅ Killed — dead-letter test `waitUntil: condition not met before timeout` (job never lands in failed set) |
+| 3 | `src/queue/bullmq-queue.ts:72` | remove `jobId: dedupKey` wiring (auto-id instead) | same | ✅ Killed — dedup test `expected '1' to be 'dedup-…'` (BullMQ auto-incrementing id, no collapse) |
+
+**Sensor depth**: lightweight fault-injection, 3 targeted behavior-level mutations on the newly-covered production path (retry count, dead-letter retention, dedup collapse).
+**Result**: **3/3 killed, 0 survived** — the new integration test is genuinely discriminating for the previously-uncovered NOTIF-02 / dedup behaviors. After all mutations reverted: `git status` clean, `git diff` empty.
+
+## Gate (Iteration 2)
+
+- **Command**: `npm run build` (tsc) + `npm run test` (vitest run, Docker-backed).
+- **Build**: clean (exit 0, no tsc errors).
+- **Tests**: **109 passed, 0 failed, 0 skipped (20 files)** — exit 0. Delta from Iteration 1: **+3 tests / +1 file** (exactly the new integration suite; the prior 106 are unchanged and still green → no regression, nothing weakened).
+- **Integration ran**: yes (3 cases, real Redis via testcontainers).
+- **Post-mutation re-run**: full suite green again (109 passed, 20 files) with tree clean.
+
+## Requirement Traceability Update (Iteration 2)
+
+| Requirement | Iteration 1 | Iteration 2 |
+| --- | --- | --- |
+| NOTIF-02 | ❌ Needs Fix (retry + dead-letter unverified) | ✅ Verified (Redis-backed integration: retry count, backoff, dead-letter retention + failedReason) |
+| Edge: `dedupKey` collapse | ❌ captured-then-dropped | ✅ Verified (wired at `bullmq-queue.ts:72`; collapse asserted) |
+
+## Remaining (non-blocking)
+
+- **ACCEPTED — spec-precision**: NOTIF-01.4 "does not hang" — 503 path asserted (`server.e2e.test.ts:174`); the timeout half is not directly asserted, but the enqueue path is a synchronous try/catch so a hang is not structurally possible. Documented, not a blocker.
+- **ACCEPTED — spec-precision**: NOTIF-13.4 literal `process.exit(0)` in the hook's `main()` is untested (`main` not exported); `run()` no-throw-on-failure IS tested (`notify-hook.test.mjs`). Documented, not a blocker.
+- **ACCEPTED — infra smoke-only**: NOTIF-12 stack-up / `.env` propagation remain smoke-only (compose structurally valid; `/health` unit-tested). Unchanged from Iteration 1, out of scope for this fix iteration.
+- **Nit (doc staleness, no behavior impact)**: the header docstring of `src/queue/bullmq-queue.ts:8-9` still says "No unit test (needs real Redis) … verified by the Phase 5 docker smoke; this file only needs to build cleanly." That is now outdated — a Redis-backed integration test exists. Cosmetic comment drift only; not a defect and not a re-verification blocker.
+
+**No new blocker found.**
