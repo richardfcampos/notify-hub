@@ -259,65 +259,65 @@ T2  → T20 ├→ T21 → T23
 **Tests**: none (integration via smoke) · **Gate**: build
 **Commit**: `feat(queue): bullmq adapter with retry + dead-letter`
 
-### T14: Token resolver [P]
+### T14: Token resolver [P] ✅
 **What**: `TokenResolver` from `AppConfig.profiles` — known token → profile, unknown → null.
 **Where**: `src/auth/token-resolver.ts` (+ `.test.ts`)
 **Depends on**: T2
 **Requirement**: NOTIF-11
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Known token → profile; unknown/undefined → null
-- [ ] Unit tests pass
+- [x] Known token → profile; unknown/undefined → null
+- [x] Unit tests pass
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(auth): token→profile resolver`
 
-### T15: Notify request schema (zod) [P]
+### T15: Notify request schema (zod) [P] ✅
 **What**: zod schema for `/notify` body + a validator returning typed payload or field errors; unknown channel name → invalid.
 **Where**: `src/api/schemas/notify-schema.ts` (+ `.test.ts`)
 **Depends on**: T2
 **Requirement**: NOTIF-01
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Valid body parses; missing/empty `message` → error; unknown `channels` entry → error; wrong types → error
-- [ ] Unit tests cover all; `npm run test:unit` passes
+- [x] Valid body parses; missing/empty `message` → error; unknown `channels` entry → error; wrong types → error
+- [x] Unit tests cover all; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(api): notify request schema`
 
-### T16: Fastify server + routes + auth
+### T16: Fastify server + routes + auth ✅
 **What**: `buildServer(deps)` with Bearer auth preHandler (TokenResolver), `POST /notify` (validate→resolve→enqueueDispatch→202/jobId; 400/401; 503 on enqueue failure), `GET /health` (QueuePort.health).
 **Where**: `src/api/server.ts`, `src/api/routes/notify.ts`, `src/api/routes/health.ts`, `src/api/plugins/auth.ts` (+ `*.e2e.test.ts`)
 **Depends on**: T10, T14, T15
 **Requirement**: NOTIF-01, NOTIF-14
 **Tools**: MCP: `context7`/`docs-seeker` (Fastify) · Skill: NONE
 **Done when**:
-- [ ] e2e via `app.inject`: valid+token→202+jobId; bad token→401; missing message→400; unknown channel→400; queue down→503; `/health`→200 redis:ok
-- [ ] Server built with injected deps (InMemoryQueue + fake resolver in tests)
-- [ ] `npm run test` passes
+- [x] e2e via `app.inject`: valid+token→202+jobId; bad token→401; missing message→400; unknown channel→400; queue down→503; `/health`→200 redis:ok
+- [x] Server built with injected deps (InMemoryQueue + fake resolver in tests)
+- [x] `npm run test` passes
 **Tests**: e2e · **Gate**: full
 **Commit**: `feat(api): notify + health routes with token auth`
 
-### T17: Composition root + end-to-end integration
+### T17: Composition root + end-to-end integration ✅
 **What**: `buildContainer(config, overrides?)` wiring config→registry(all adapters)→queue→dispatch/delivery/token services→server; integration test that drives POST /notify through InMemoryQueue to fake channels, asserting fan-out + partial-failure isolation (one channel throws, others deliver, per-channel results).
 **Where**: `src/container.ts`, `src/channels/channel-registry.ts` (assembles adapter entries), `test/integration/fan-out.test.ts`
 **Depends on**: T3, T4, T5, T6, T7, T8, T9, T11, T12, T13, T16
 **Requirement**: NOTIF-03, NOTIF-04
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Container builds active channels from config; overrides inject fakes/InMemoryQueue
-- [ ] Integration test: send to 2+ channels, one fails → others still delivered, results recorded (NOTIF-04)
-- [ ] `npm run test` passes
+- [x] Container builds active channels from config; overrides inject fakes/InMemoryQueue
+- [x] Integration test: send to 2+ channels, one fails → others still delivered, results recorded (NOTIF-04)
+- [x] `npm run test` passes
 **Tests**: integration · **Gate**: full
 **Commit**: `feat(core): composition root + fan-out integration`
 
-### T18: Entrypoints (api + worker)
+### T18: Entrypoints (api + worker) ✅
 **What**: `src/bin/api.ts` (load config → buildContainer → start Fastify + dispatch producer), `src/bin/worker.ts` (buildContainer → register dispatch + delivery workers).
 **Where**: `src/bin/api.ts`, `src/bin/worker.ts`
 **Depends on**: T17, T13
 **Requirement**: NOTIF-12
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Both build and start against config; graceful shutdown closes queue
-- [ ] `npm run build` passes
+- [x] Both build and start against config; graceful shutdown closes queue
+- [x] `npm run build` passes
 **Tests**: none · **Gate**: build
 **Commit**: `feat(bin): api and worker entrypoints`
 
