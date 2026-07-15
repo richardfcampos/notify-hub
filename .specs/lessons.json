@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 2,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "ac_gap::queue reliability guarantees retry backoff dead letter require an integration test that forces an exhausted failure path a happy path smoke or single send never verifies them",
+      "text": "Queue reliability guarantees (retry, backoff, dead-letter) require an integration test that forces an exhausted-failure path; a happy-path smoke or single send never verifies them.",
+      "signal": "ac_gap",
+      "scope": "queue",
+      "status": "candidate",
+      "features": [
+        "notification-gateway"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        ".specs/features/notification-gateway/validation.md (NOTIF-02.2/02.3) (queue)"
+      ],
+      "created": "2026-07-15T06:10:41Z",
+      "last_seen": "2026-07-15T06:10:41Z"
+    }
+  ]
+}
