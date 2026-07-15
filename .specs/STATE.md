@@ -24,12 +24,20 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 
 ## Handoff
 
-**Phase:** Design — COMPLETE & APPROVED (Approach 1). Next: Tasks breakdown.
-**Next step:** Write `tasks.md` — atomic tasks with verification, grouped into phases; then offer sub-agent delegation (>3 phases) and Execute.
+**Phase:** Execute — IN PROGRESS. Tasks approved (24 tasks, 5 phases + Verifier). Scope = all (MVP + T22 WhatsApp + T24 webhook).
+**Execution mode:** one sub-agent per phase (sequential); per-phase model routing (Sonnet phases 1-3,5; Opus phase 4 + Verifier). Verifier always runs after last task.
+**Git:** local repo initialized (`main`); initial commit = planning artifacts. Atomic commit per task. Remote/GitHub deferred per user.
+**Test stack:** Vitest (unit/integration/e2e via inject), no real network/Redis in tests.
 
-**Artifacts:**
-- `.specs/features/notification-gateway/spec.md`
-- `.specs/features/notification-gateway/context.md`
-- `.specs/features/notification-gateway/design.md` (Approved)
+**Progress:**
+- [x] Phase 1 — Foundation (T1-T3) — commits 8b34ee2, e09eac1, 5752920; 6 unit tests pass
+- [ ] Phase 2 — Channels (T4-T9)
+- [ ] Phase 3 — Queue/dispatch/delivery (T10-T13)
+- [ ] Phase 4 — API + wiring + integration (T14-T18)
+- [ ] Phase 5 — Docker + hook + docs + T22/T24 (T19-T24)
+- [ ] Verifier
 
-**Open questions:** none — all resolved or logged as assumptions in spec.md.
+**Phase 1 notes:** ESM + TS (NodeNext, strict), Vitest. TOKENS format = `name:token:ch1,ch2` entries separated by `;`. `requiredConfigByChannel: Record<string,string[]>` is the DI seam the channel registry (T4) must populate for loadConfig fail-fast. Deps bumped for security: nodemailer@9.0.3, vitest@4.1.10 (npm audit clean).
+
+**Next step:** Dispatch Phase 2 worker (channels).
+**Open questions:** none.
