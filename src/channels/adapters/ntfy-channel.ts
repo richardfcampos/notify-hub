@@ -1,8 +1,10 @@
 /**
- * ntfy channel adapter (spec NOTIF-05). Publishes to a self-hosted or
- * ntfy.sh topic via HTTP POST -- title/priority/tags map to ntfy's header
- * conventions, the message is the plain-text body. Depends only on the
- * injected HttpClient (never imports fetch directly) so it stays
+ * ntfy channel adapter. Publishes to a self-hosted or ntfy.sh topic using
+ * ntfy's JSON publish format: POST to the server root with the topic in
+ * the body. JSON keeps every field UTF-8 safe -- title/tags/message may
+ * contain emoji or accents, which would break ntfy's alternative
+ * header-based convention (HTTP headers only allow Latin-1). Depends only
+ * on the injected HttpClient (never imports fetch directly) so it stays
  * mockable.
  */
 import type {
@@ -11,6 +13,14 @@ import type {
   Notification,
   NotificationChannel
 } from '../../core/types.js'
+
+/** ntfy priorities are integers 1 (min) .. 5 (max). */
+const NTFY_PRIORITY: Record<string, number> = {
+  low: 2,
+  default: 3,
+  high: 4,
+  urgent: 5
+}
 
 export class NtfyChannel implements NotificationChannel {
   readonly name = 'ntfy'
@@ -21,22 +31,24 @@ export class NtfyChannel implements NotificationChannel {
   ) {}
 
   async send(notification: Notification): Promise<void> {
-    const headers: Record<string, string> = {
-      Title: notification.title
+    const body: Record<string, unknown> = {
+      topic: this.cfg.NTFY_TOPIC,
+      title: notification.title,
+      message: notification.message
     }
     if (notification.priority) {
-      headers.Priority = notification.priority
+      body.priority = NTFY_PRIORITY[notification.priority]
     }
     if (notification.tags && notification.tags.length > 0) {
-      headers.Tags = notification.tags.join(',')
+      body.tags = notification.tags
     }
 
-    const url = `${this.cfg.NTFY_URL}/${this.cfg.NTFY_TOPIC}`
+    const url = this.cfg.NTFY_URL
     const response = await this.deps.http.request({
       method: 'POST',
       url,
-      headers,
-      body: notification.message
+      headers: { 'content-type': 'application/json' },
+      body
     })
 
     if (response.status < 200 || response.status >= 300) {
