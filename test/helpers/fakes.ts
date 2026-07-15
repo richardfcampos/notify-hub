@@ -1,7 +1,7 @@
 /**
  * Shared test doubles for the mockable seams (HttpClient, MailTransport,
- * Clock, Logger). Used by channel-builder/decorator/adapter unit tests --
- * never imported by production code.
+ * Clock, Logger, FileStore). Used by channel-builder/decorator/adapter and
+ * admin-panel unit/e2e tests -- never imported by production code.
  */
 import type {
   Clock,
@@ -9,6 +9,7 @@ import type {
   Logger,
   MailTransport
 } from '../../src/core/ports.js'
+import type { FileStore } from '../../src/admin/env-file-store.js'
 
 export interface RecordedRequest {
   method: string
@@ -115,5 +116,39 @@ export class FakeLogger implements Logger {
 
   error(o: unknown, m?: string): void {
     this.entries.push({ level: 'error', obj: o, msg: m })
+  }
+}
+
+/**
+ * In-memory FileStore (admin panel). `read()` returns null until content is
+ * seeded/written, matching the real store's "file doesn't exist yet"
+ * behavior. `backup()` records a fake path per call (null when there is
+ * nothing to back up) instead of touching disk.
+ */
+export class FakeFileStore implements FileStore {
+  content: string | null
+  readonly backups: string[] = []
+  private backupCounter = 0
+
+  constructor(initialContent: string | null = null) {
+    this.content = initialContent
+  }
+
+  async read(): Promise<string | null> {
+    return this.content
+  }
+
+  async write(content: string): Promise<void> {
+    this.content = content
+  }
+
+  async backup(): Promise<string | null> {
+    if (this.content === null) {
+      return null
+    }
+    this.backupCounter += 1
+    const path = `fake-backup-${this.backupCounter}`
+    this.backups.push(path)
+    return path
   }
 }
