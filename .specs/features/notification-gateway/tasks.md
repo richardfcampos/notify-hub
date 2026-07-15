@@ -321,76 +321,76 @@ T2  → T20 ├→ T21 → T23
 **Tests**: none · **Gate**: build
 **Commit**: `feat(bin): api and worker entrypoints`
 
-### T19: Dockerfile + docker-compose
+### T19: Dockerfile + docker-compose ✅
 **What**: `Dockerfile` (shared image), `docker-compose.yml` (`redis`, `api`, `worker` reading `.env`), healthcheck on api.
 **Where**: `Dockerfile`, `docker-compose.yml`
 **Depends on**: T18
 **Requirement**: NOTIF-12
 **Tools**: MCP: NONE · Skill: `deploy`/`devops` (optional) · NONE required
 **Done when**:
-- [ ] `docker compose config` valid; three services defined; api depends_on redis
-- [ ] (Smoke in T23) `docker compose up` → `/health` 200
+- [x] `docker compose config` valid; three services defined; api depends_on redis
+- [x] (Smoke in T23) `docker compose up` → `/health` 200
 **Tests**: none · **Gate**: build
 **Commit**: `feat(docker): compose stack (redis + api + worker)`
 
-### T20: Claude Code hook client [P]
+### T20: Claude Code hook client [P] ✅
 **What**: `notify-hook.mjs` (zero-dep) — read hook JSON stdin, map `hook_event_name`→event (toggle via env), build payload (project=basename cwd, summary=last assistant msg from transcript best-effort, duration=now−cached start best-effort, timestamp), POST to gateway with token; **always exit 0**; cache start-time per session_id.
 **Where**: `clients/claude-code/notify-hook.mjs` (+ `notify-hook.test.mjs`)
 **Depends on**: T2
 **Requirement**: NOTIF-13
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Stop→event=end payload; UserPromptSubmit→start; Notification→needs-input; each env-toggle respected
-- [ ] Gateway error/timeout → exit 0 (never blocks)
-- [ ] Missing transcript/start-time → send without that field
-- [ ] Tests (node/vitest) assert payload via fake fetch + exit-0 on error; `npm run test` passes
+- [x] Stop→event=end payload; UserPromptSubmit→start; Notification→needs-input; each env-toggle respected
+- [x] Gateway error/timeout → exit 0 (never blocks)
+- [x] Missing transcript/start-time → send without that field
+- [x] Tests (node/vitest) assert payload via fake fetch + exit-0 on error; `npm run test` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(client): claude code notification hook`
 
-### T21: Hook install docs + settings snippet
+### T21: Hook install docs + settings snippet ✅
 **What**: `install.md` — global `~/.claude/settings.json` hook config (UserPromptSubmit/Stop/Notification → the mjs), env setup (`NOTIFY_URL`, `NOTIFY_TOKEN`, event toggles), troubleshooting.
 **Where**: `clients/claude-code/install.md`, `clients/claude-code/.env.example`
 **Depends on**: T20
 **Requirement**: NOTIF-13
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] Copy-pasteable settings.json snippet for global install
-- [ ] Env keys documented
+- [x] Copy-pasteable settings.json snippet for global install
+- [x] Env keys documented
 **Tests**: none · **Gate**: build
 **Commit**: `docs(client): claude code hook install guide`
 
-### T22: WhatsApp (CallMeBot) adapter — P2 (optional)
+### T22: WhatsApp (CallMeBot) adapter — P2 (optional) ✅
 **What**: `WhatsAppChannel` via CallMeBot API (`WHATSAPP_PHONE`, `WHATSAPP_APIKEY`); register.
 **Where**: `src/channels/adapters/whatsapp-channel.ts` (+ `.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-15
 **Tools**: MCP: `docs-seeker` (CallMeBot) · Skill: NONE
 **Done when**:
-- [ ] Correct CallMeBot request (FakeHttpClient); non-2xx → throws
-- [ ] Unit tests: happy + error + rate-limit; `npm run test:unit` passes
+- [x] Correct CallMeBot request (FakeHttpClient); non-2xx → throws
+- [x] Unit tests: happy + error + rate-limit; `npm run test:unit` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): whatsapp (callmebot) adapter`
 
-### T23: README + final env + end-to-end smoke
+### T23: README + final env + end-to-end smoke ✅
 **What**: `README.md` (what/why, quickstart `docker compose up`, curl example, channel setup, hook install link), finalize `.env.example`; run the docker smoke (up → `/health` → one real `POST /notify` to a configured channel).
 **Where**: `README.md`, `.env.example`
 **Depends on**: T19, T21
 **Requirement**: All (docs) + NOTIF-12 smoke
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] README covers quickstart + curl + channels + hook
-- [ ] Smoke: `docker compose up -d` → `curl /health`=200; one send reaches a real channel (or documented if creds absent)
+- [x] README covers quickstart + curl + channels + hook
+- [x] Smoke: `docker compose up -d` → `curl /health`=200; one send reaches a real channel (or documented if creds absent)
 **Tests**: none · **Gate**: build
 **Commit**: `docs: readme + quickstart + smoke`
 
-### T24: Generic webhook adapter — P3 (optional)
+### T24: Generic webhook adapter — P3 (optional) ✅
 **What**: `WebhookChannel` — POST notification JSON to `WEBHOOK_URL`; reference plugin proving extensibility.
 **Where**: `src/channels/adapters/webhook-channel.ts` (+ `.test.ts`)
 **Depends on**: T4
 **Requirement**: NOTIF-16
 **Tools**: MCP: NONE · Skill: NONE
 **Done when**:
-- [ ] POSTs JSON to configured URL (FakeHttpClient); non-2xx → throws; unit tests pass
+- [x] POSTs JSON to configured URL (FakeHttpClient); non-2xx → throws; unit tests pass
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): generic webhook adapter`
 
