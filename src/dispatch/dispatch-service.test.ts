@@ -148,4 +148,65 @@ describe('DispatchService.handleDispatch', () => {
     // Same origin dispatch id shared across the fan-out.
     expect(recorded[0].dispatchJobId).toEqual(recorded[1].dispatchJobId)
   })
+
+  it('fallback routes ONLY to the profile default subset, not every enabled instance (discriminates against a "route to all enabled" regression)', async () => {
+    // Enabled set is a strict SUPERSET of the profile's defaults: acme-slack,
+    // globex-slack, and ntfy are all enabled, but this profile only defaults
+    // to acme-slack. If the fallback source were `listEnabled()` instead of
+    // the profile's `defaultChannels`, all three would be enqueued here.
+    const acmeProfile: ProfileRecord = {
+      id: 'acme',
+      name: 'acme',
+      token: 'acme-secret',
+      defaultChannels: ['acme-slack']
+    }
+    const { service, recorded } = makeService(
+      [channel('acme-slack', 'slack'), channel('globex-slack', 'slack'), channel('ntfy', 'ntfy')],
+      [acmeProfile]
+    )
+
+    await service.handleDispatch({
+      notification: { title: 't', message: 'm' },
+      profileId: 'acme'
+    })
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded.map((j) => j.channel)).toEqual(['acme-slack'])
+    expect(recorded.map((j) => j.channel)).not.toContain('globex-slack')
+    expect(recorded.map((j) => j.channel)).not.toContain('ntfy')
+  })
+
+  it('isolates dispatch across profiles: each profile fans out ONLY to its own default instance, never the other profile\'s', async () => {
+    // Success Criterion 1 (cross-profile isolation): Acme's notification must
+    // never land on Globex's Slack instance and vice versa, even though both
+    // instances are enabled and visible to `listEnabled()`.
+    const acmeProfile: ProfileRecord = {
+      id: 'acme',
+      name: 'acme',
+      token: 'acme-secret',
+      defaultChannels: ['acme-slack']
+    }
+    const globexProfile: ProfileRecord = {
+      id: 'globex',
+      name: 'globex',
+      token: 'globex-secret',
+      defaultChannels: ['globex-slack']
+    }
+    const { service, recorded } = makeService(
+      [channel('acme-slack', 'slack'), channel('globex-slack', 'slack'), channel('ntfy', 'ntfy')],
+      [acmeProfile, globexProfile]
+    )
+
+    await service.handleDispatch({
+      notification: { title: 'acme notice', message: 'm' },
+      profileId: 'acme'
+    })
+    expect(recorded.map((j) => j.channel)).toEqual(['acme-slack'])
+
+    await service.handleDispatch({
+      notification: { title: 'globex notice', message: 'm' },
+      profileId: 'globex'
+    })
+    expect(recorded.map((j) => j.channel)).toEqual(['acme-slack', 'globex-slack'])
+  })
 })

@@ -20,8 +20,34 @@ import {
   FakeLogger,
   FakeMailTransport
 } from '../../test/helpers/fakes.js'
+import type { ChannelRepository } from '../core/ports.js'
 import type { ChannelDeps, ChannelInstance } from '../core/types.js'
 import { DeliveryService } from './delivery-service.js'
+
+/**
+ * ChannelRepository whose `get` throws instead of returning null/instance --
+ * simulates a DB read failure (e.g. connection drop, disk I/O error) mid
+ * delivery, distinct from the "missing/disabled instance" no-op path.
+ */
+class ThrowingChannelRepository implements ChannelRepository {
+  constructor(private readonly error: Error) {}
+
+  list(): ChannelInstance[] {
+    return []
+  }
+
+  listEnabled(): ChannelInstance[] {
+    return []
+  }
+
+  get(): ChannelInstance | null {
+    throw this.error
+  }
+
+  upsert(): void {}
+
+  delete(): void {}
+}
 
 function makeChannelDeps(http: FakeHttpClient): ChannelDeps {
   return { http, mail: new FakeMailTransport(), logger: new FakeLogger() }
@@ -160,5 +186,47 @@ describe('DeliveryService.deliver', () => {
     expect(errorEntry).toBeDefined()
     expect((errorEntry?.obj as { channel: string; ok: boolean }).channel).toBe('slacky')
     expect((errorEntry?.obj as { ok: boolean }).ok).toBe(false)
+  })
+
+  it('propagates a repository read failure (so the queue retries) without crashing other deliveries', async () => {
+    const http = new FakeHttpClient()
+    const dbError = new Error('SQLITE_IOERR: disk I/O error')
+    const repo = new ThrowingChannelRepository(dbError)
+    const service = new DeliveryService({
+      channelRepo: repo,
+      channelDeps: makeChannelDeps(http),
+      clock: new FakeClock(),
+      logger: new FakeLogger()
+    })
+
+    // The failed read for THIS job's channel throws out of deliver() -- this
+    // is the contract that lets BullMQ retry the job -- and never touches
+    // the adapter (no send attempted).
+    await expect(
+      service.deliver({
+        notification: { title: 't', message: 'm' },
+        channel: 'acme-webhook',
+        dispatchJobId: 'd1'
+      })
+    ).rejects.toThrow(dbError)
+    expect(http.calls).toHaveLength(0)
+
+    // Process-level isolation: the throw is scoped to this one job/channel --
+    // a healthy repo + a different service instance still delivers fine
+    // right after, proving the failure didn't crash or corrupt shared state.
+    const healthyRepo = new FakeChannelRepository([webhookInstance()])
+    const healthyService = new DeliveryService({
+      channelRepo: healthyRepo,
+      channelDeps: makeChannelDeps(http),
+      clock: new FakeClock(),
+      logger: new FakeLogger()
+    })
+    const result = await healthyService.deliver({
+      notification: { title: 't', message: 'm' },
+      channel: 'acme-webhook',
+      dispatchJobId: 'd2'
+    })
+    expect(result.ok).toBe(true)
+    expect(http.calls).toHaveLength(1)
   })
 })
