@@ -1,7 +1,7 @@
 # DB-backed Named Channel Instances — Tasks
 
 **Spec**: `.specs/features/db-channels/spec.md`
-**Status**: In Progress — D1 done (1f25250); D2-D11 pending. See STATE.md Handoff CURRENT WORK.
+**Status**: Phase 1 (D1-D3) DONE — 215 tests. Phase 2 (D4-D8) next. See STATE.md CURRENT WORK.
 **Design (inline)**: SQLite (`better-sqlite3`) behind repository ports (Ports & Adapters, like the rest). Registry keyed by TYPE; adapters built per-instance from DB config at delivery time (hot-reload). Admin panel edits the DB live (no compose-apply). `.env` keeps infra only. Auto-seed from legacy `.env` on empty DB.
 
 ## Test Coverage Matrix
@@ -28,17 +28,17 @@ Phase 3 (admin rewire):    D9 → D10
 Phase 4 (docker/docs):     D11
 ```
 
-### D1: SQLite bootstrap + schema
+### D1: SQLite bootstrap + schema ✅
 **What**: add `better-sqlite3` dep; `src/db/database.ts` opens DB at `DB_PATH`, sets WAL + busy_timeout, runs idempotent schema migrations. Schema: `channels(id TEXT PK, label TEXT, type TEXT, enabled INTEGER, config TEXT_json, created_at)`, `profiles(id TEXT PK, name TEXT, token TEXT UNIQUE)`, `profile_channels(profile_id, channel_id, PK)`. Dockerfile build stage: `apk add python3 make g++` (native module).
 **Requirement**: DBCH-01 · **Tests**: unit (temp file) · **Gate**: quick
 **Commit**: `feat(db): sqlite bootstrap and schema`
 
-### D2: Channel + Profile repositories
+### D2: Channel + Profile repositories ✅
 **What**: ports `ChannelRepository` (list, listEnabled, get, upsert, delete) + `ProfileRepository` (list, get, upsert, delete, resolveByToken, setDefaultChannels) in `src/db/`; SQLite impls + an in-memory fake for tests. `ChannelInstance = {id, label, type, enabled, config}`.
 **Requirement**: DBCH-02 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(db): channel and profile repositories`
 
-### D3: Seed-from-env migration
+### D3: Seed-from-env migration ✅
 **What**: `src/db/seed-from-env.ts` — if channels table empty and legacy config present, map each enabled `.env` channel → instance {id:type, label:Title(type), type, enabled, config}; missing required cred → enabled:false; TOKENS → profiles + profile_channels. Idempotent (no-op if populated).
 **Requirement**: DBCH-03 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(db): seed from legacy .env when empty`
