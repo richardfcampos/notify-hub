@@ -1,7 +1,7 @@
 # DB-backed Named Channel Instances — Tasks
 
 **Spec**: `.specs/features/db-channels/spec.md`
-**Status**: In Progress
+**Status**: In Progress — D1 done (1f25250); D2-D11 pending. See STATE.md Handoff CURRENT WORK.
 **Design (inline)**: SQLite (`better-sqlite3`) behind repository ports (Ports & Adapters, like the rest). Registry keyed by TYPE; adapters built per-instance from DB config at delivery time (hot-reload). Admin panel edits the DB live (no compose-apply). `.env` keeps infra only. Auto-seed from legacy `.env` on empty DB.
 
 ## Test Coverage Matrix

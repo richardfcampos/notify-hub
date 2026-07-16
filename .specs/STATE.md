@@ -31,6 +31,29 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 
 ## Handoff
 
+### ⏳ CURRENT WORK (interrupted by session limit 2026-07-16) — Feature 4: db-channels
+
+**WHAT & WHY:** User wants **multiple named channel instances per type** (e.g. several Slack/Discord, one per company), each with its own credentials, and each profile choosing which instances it routes to. Config moves from flat `.env` to **SQLite** (user said "um db"), with **hot-reload** (no restart on save) and each channel having a **name/id + separate label**. See `.specs/features/db-channels/{spec.md,tasks.md}`. Decisions recorded as **AD-016** (SQLite store, supersedes .env-config AD-005/006), **AD-017** (named instances, registry keyed by TYPE), **AD-018** (hot-reload, supersedes AD-013/014 Save&Apply + startup fail-fast).
+
+**PLAN:** 11 tasks (D1-D11) in 4 phases + Verifier. Phase 1 (D1-D3 SQLite foundation) → Phase 2 (D4-D8 gateway rewire to DB + hot-reload) → Phase 3 (D9-D10 admin API+UI rewire) → Phase 4 (D11 docker/docs/migration) → Verifier.
+
+**PROGRESS:**
+- [x] **D1 — sqlite bootstrap + schema** — commit `1f25250`, PUSHED. `src/db/database.ts` (openDatabase: WAL + busy_timeout + foreign_keys, creates file/dirs), `src/db/schema-sql.ts` (channels/profiles/profile_channels, idempotent), Dockerfile build+runtime stages `apk add python3 make g++` for better-sqlite3 native module. 7 tests pass, build ok. Added dep `better-sqlite3@^12.11.1` + `@types/better-sqlite3`.
+- [ ] **D2 — channel + profile repositories** (Ports & Adapters). NEXT. Ports `ChannelRepository`/`ProfileRepository` in core/ports.ts; `src/db/sqlite-channel-repository.ts` + `sqlite-profile-repository.ts`; `ChannelInstance={id,label,type,enabled,config}`, `ProfileRecord={id,name,token,defaultChannels[]}`; add `FakeChannelRepository`/`FakeProfileRepository` to test/helpers/fakes.ts. Commit msg: `feat(db): channel and profile repositories`.
+- [ ] **D3 — seed-from-.env-if-empty** — `src/db/seed-from-env.ts`, takes parsed appConfig (NOT process.env), maps legacy singleton channels→instances (id=type), missing cred→enabled:false, TOKENS→profiles. Idempotent. Commit: `feat(db): seed from legacy .env when empty`.
+- [ ] **D4-D8 Phase 2** (gateway): type-keyed registry + per-instance build; delivery reads instance from repo at delivery time (hot-reload); dispatch resolves instance ids ∩ enabled; API token→profile + /notify + /channels by instance id; container/entrypoints open DB + seed, remove startup fail-fast/buildActive.
+- [ ] **D9-D10 Phase 3** (admin): DB-backed CRUD (drop /api/apply + compose runner + .env file-store for channels); UI = instance list (add/name/label/type/creds/enable/test/delete) + profiles pick instances, single live Save (no restart).
+- [ ] **D11 Phase 4**: compose named volume at /data for the .db, DB_PATH env, README rewrite, live migration of user's setup + smoke.
+- [ ] **Verifier** after D11 (author≠verifier): spec-anchored DBCH-01..10 + sensor (hot-reload re-reads, per-profile isolation, dup-id reject, seed idempotency).
+
+**HOW TO RESUME:** dispatch a fullstack-developer phase worker (Sonnet) for **D2→D3** (finish Phase 1), gate `npm run test:unit`, atomic commit each, push. Then Phase 2 worker (D4-D8), Phase 3 (D9-D10), Phase 4 (D11), then Verifier (code-reviewer, Opus). Baseline before this feature: 193 tests (commit de7553f). Existing runtime (api/worker/admin) is STILL on the old .env model and fully working — do not break it until Phase 2 rewires it. Current live stack (docker compose) runs the pre-DB code; user's WhatsApp was REMOVED from their config earlier; their default channel = `slack` (still misconfigured — needs a real Incoming Webhook URL).
+
+**CAVEAT:** part of the D1 worker ran while the Opus safety classifier was unavailable; D1 was re-reviewed here (code read + tests + build) before committing. Re-verify D2+ normally.
+
+---
+
+### Prior features (all COMPLETE & VALIDATED)
+
 **Phase:** Execute — IN PROGRESS. Tasks approved (24 tasks, 5 phases + Verifier). Scope = all (MVP + T22 WhatsApp + T24 webhook).
 **Execution mode:** one sub-agent per phase (sequential); per-phase model routing (Sonnet phases 1-3,5; Opus phase 4 + Verifier). Verifier always runs after last task.
 **Git:** local repo initialized (`main`); initial commit = planning artifacts. Atomic commit per task. Remote/GitHub deferred per user.
