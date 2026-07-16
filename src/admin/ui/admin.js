@@ -11,6 +11,7 @@ import { fetchConfig } from './admin-api.js'
 import { setConfigFromServer, getConfig } from './admin-state.js'
 import { renderChannelGrid } from './admin-channels.js'
 import { renderProfilesList, wireAddProfileButton } from './admin-profiles.js'
+import { pruneDefaultChannelsToEnabled } from './admin-defaults.js'
 import { refreshStatus } from './admin-status.js'
 import { wireSaveBar } from './admin-save-flow.js'
 import { showToast } from './admin-toast.js'
@@ -39,7 +40,13 @@ function renderEmptyBanner(config) {
 }
 
 function renderAll(config) {
-  renderChannelGrid(config, () => renderProfilesList(config))
+  // On a channel enable/disable flip, drop any now-disabled channel from
+  // every profile's defaults before re-rendering the chips -- otherwise a
+  // disabled channel stays silently selected and fails validation on save.
+  renderChannelGrid(config, () => {
+    pruneDefaultChannelsToEnabled(config)
+    renderProfilesList(config)
+  })
   renderProfilesList(config)
   renderEmptyBanner(config)
 }
