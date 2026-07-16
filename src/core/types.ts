@@ -37,6 +37,27 @@ export interface Profile {
 }
 
 /**
+ * A named channel instance persisted in the DB: N per type (e.g. two Slack
+ * instances for two companies), each with its own id, display label, and
+ * credentials. `config` holds the type's required keys (see the registry).
+ */
+export interface ChannelInstance {
+  id: string
+  label: string
+  type: string
+  enabled: boolean
+  config: Record<string, string>
+}
+
+/** A token profile persisted in the DB and the instance ids it routes to by default. */
+export interface ProfileRecord {
+  id: string
+  name: string
+  token: string
+  defaultChannels: string[]
+}
+
+/**
  * Strategy interface: every channel (ntfy, Telegram, Email, Slack, Discord,
  * WhatsApp, ...) implements exactly this. Throw = failure; the queue/worker
  * layer converts that into retry + a DeliveryResult.

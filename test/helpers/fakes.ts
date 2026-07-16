@@ -8,8 +8,11 @@ import type {
   Clock,
   HttpClient,
   Logger,
-  MailTransport
+  MailTransport,
+  ChannelRepository,
+  ProfileRepository
 } from '../../src/core/ports.js'
+import type { ChannelInstance, ProfileRecord } from '../../src/core/types.js'
 import type { FileStore } from '../../src/admin/env-file-store.js'
 import type { CommandResult, CommandRunner } from '../../src/admin/command-runner.js'
 
@@ -182,5 +185,84 @@ export class FakeCommandRunner implements CommandRunner {
   ): Promise<CommandResult> {
     this.calls.push({ cmd, args, opts })
     return this.script.shift() ?? this.defaultResult
+  }
+}
+
+/** In-memory ChannelRepository (clones on the way in/out so callers can't mutate stored state). */
+export class FakeChannelRepository implements ChannelRepository {
+  private readonly store = new Map<string, ChannelInstance>()
+
+  constructor(initial: ChannelInstance[] = []) {
+    for (const channel of initial) {
+      this.store.set(channel.id, structuredClone(channel))
+    }
+  }
+
+  list(): ChannelInstance[] {
+    return [...this.store.values()].map((c) => structuredClone(c))
+  }
+
+  listEnabled(): ChannelInstance[] {
+    return this.list().filter((c) => c.enabled)
+  }
+
+  get(id: string): ChannelInstance | null {
+    const channel = this.store.get(id)
+    return channel ? structuredClone(channel) : null
+  }
+
+  upsert(channel: ChannelInstance): void {
+    this.store.set(channel.id, structuredClone(channel))
+  }
+
+  delete(id: string): void {
+    this.store.delete(id)
+  }
+}
+
+/** In-memory ProfileRepository mirroring the SQLite one's contract. */
+export class FakeProfileRepository implements ProfileRepository {
+  private readonly store = new Map<string, ProfileRecord>()
+
+  constructor(initial: ProfileRecord[] = []) {
+    for (const profile of initial) {
+      this.store.set(profile.id, structuredClone(profile))
+    }
+  }
+
+  list(): ProfileRecord[] {
+    return [...this.store.values()].map((p) => structuredClone(p))
+  }
+
+  get(id: string): ProfileRecord | null {
+    const profile = this.store.get(id)
+    return profile ? structuredClone(profile) : null
+  }
+
+  resolveByToken(token: string | undefined): ProfileRecord | null {
+    if (!token) {
+      return null
+    }
+    for (const profile of this.store.values()) {
+      if (profile.token === token) {
+        return structuredClone(profile)
+      }
+    }
+    return null
+  }
+
+  upsert(profile: ProfileRecord): void {
+    this.store.set(profile.id, structuredClone(profile))
+  }
+
+  delete(id: string): void {
+    this.store.delete(id)
+  }
+
+  setDefaultChannels(profileId: string, channelIds: string[]): void {
+    const profile = this.store.get(profileId)
+    if (profile) {
+      profile.defaultChannels = [...channelIds]
+    }
   }
 }

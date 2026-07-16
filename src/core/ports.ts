@@ -4,7 +4,13 @@
  * on concrete implementations (fetch, nodemailer, BullMQ, Date.now, ...),
  * so tests can inject fakes with zero network/Redis/SMTP.
  */
-import type { Profile, DispatchJob, DeliveryJob } from './types.js'
+import type {
+  Profile,
+  DispatchJob,
+  DeliveryJob,
+  ChannelInstance,
+  ProfileRecord
+} from './types.js'
 
 /** Minimal HTTP client seam used by webhook-style channel adapters. */
 export interface HttpClient {
@@ -35,6 +41,29 @@ export interface QueuePort {
 /** Resolves a Bearer token to its profile, or null when unknown. */
 export interface TokenResolver {
   resolve(token: string | undefined): Profile | null
+}
+
+/**
+ * Persistence seam for named channel instances (SQLite in prod, in-memory
+ * fake in tests). Read at request/delivery time so panel edits hot-reload
+ * without a restart.
+ */
+export interface ChannelRepository {
+  list(): ChannelInstance[]
+  listEnabled(): ChannelInstance[]
+  get(id: string): ChannelInstance | null
+  upsert(channel: ChannelInstance): void
+  delete(id: string): void
+}
+
+/** Persistence seam for token profiles and the channel instances they route to. */
+export interface ProfileRepository {
+  list(): ProfileRecord[]
+  get(id: string): ProfileRecord | null
+  resolveByToken(token: string | undefined): ProfileRecord | null
+  upsert(profile: ProfileRecord): void
+  delete(id: string): void
+  setDefaultChannels(profileId: string, channelIds: string[]): void
 }
 
 /** Injectable time source so services stay deterministic in tests. */
