@@ -1,18 +1,31 @@
 /**
  * Composition root (design Component 1): the single place concrete
- * implementations are instantiated and wired. Production builds real
- * channels/queue/transports from AppConfig; tests pass `overrides` to inject
- * fakes (InMemoryQueue, fake channels) and drive the whole pipeline without
- * network/Redis/SMTP. Exposes the queue, the server deps, worker
- * registration, and a close() for graceful shutdown.
+ * implementations are instantiated and wired. Production opens the SQLite DB
+ * at `config.dbPath`, builds the channel/profile repositories over it, runs
+ * the one-time seed-from-.env migration, and wires dispatch/delivery/api on
+ * those repositories (so config is read live from the DB -> hot-reload).
+ * Tests pass `overrides` to inject fakes (InMemoryQueue, in-memory repos,
+ * fake http/mail) and drive the whole pipeline without SQLite/Redis/SMTP.
+ * Exposes the queue, the server deps, worker registration, and a close()
+ * that shuts the queue AND the DB down.
  */
+import type Database from 'better-sqlite3'
 import pino from 'pino'
 import type { ServerDeps } from './api/server.js'
-import { createTokenResolver } from './auth/token-resolver.js'
-import { ChannelBuilder } from './channels/channel-builder.js'
-import { channelRegistry } from './channels/channel-registry.js'
-import type { Clock, HttpClient, Logger, MailTransport, QueuePort } from './core/ports.js'
-import type { AppConfig, NotificationChannel, Profile } from './core/types.js'
+import type {
+  ChannelRepository,
+  Clock,
+  HttpClient,
+  Logger,
+  MailTransport,
+  ProfileRepository,
+  QueuePort
+} from './core/ports.js'
+import type { AppConfig, ChannelDeps } from './core/types.js'
+import { openDatabase } from './db/database.js'
+import { seedFromEnvIfEmpty } from './db/seed-from-env.js'
+import { SqliteChannelRepository } from './db/sqlite-channel-repository.js'
+import { SqliteProfileRepository } from './db/sqlite-profile-repository.js'
 import { DeliveryService } from './delivery/delivery-service.js'
 import { DispatchService } from './dispatch/dispatch-service.js'
 import { FetchHttpClient } from './http/fetch-http-client.js'
@@ -21,7 +34,8 @@ import { NodemailerTransport } from './transports/nodemailer-transport.js'
 
 export interface ContainerOverrides {
   queue?: QueuePort
-  channels?: Map<string, NotificationChannel>
+  channelRepo?: ChannelRepository
+  profileRepo?: ProfileRepository
   http?: HttpClient
   mail?: MailTransport
   clock?: Clock
@@ -53,56 +67,56 @@ export function buildContainer(
   const logger = overrides.logger ?? createDefaultLogger()
   const clock: Clock = overrides.clock ?? { now: () => Date.now() }
 
-  // Real HTTP/mail transports are only constructed when channels aren't
-  // overridden, so tests that inject fake channels never touch nodemailer.
-  const channels =
-    overrides.channels ??
-    ChannelBuilder.buildActive(channelRegistry, config.channelsEnabled, config.channelConfig, {
-      http: overrides.http ?? new FetchHttpClient(),
-      mail: overrides.mail ?? new NodemailerTransport(config.channelConfig.email ?? {}),
-      logger
-    })
+  // Open the on-disk DB only when repositories aren't injected. Tests inject
+  // in-memory repos and never touch SQLite; production opens the real file.
+  let db: Database.Database | null = null
+  if (!overrides.channelRepo || !overrides.profileRepo) {
+    db = openDatabase(config.dbPath)
+  }
+  // `db!` is safe: it is opened above whenever the matching override is absent.
+  const channelRepo: ChannelRepository =
+    overrides.channelRepo ?? new SqliteChannelRepository(db!)
+  const profileRepo: ProfileRepository =
+    overrides.profileRepo ?? new SqliteProfileRepository(db!)
+
+  // One-time migration: seed channels + profiles from the legacy .env-derived
+  // config when the DB is empty. Idempotent (no-op once any channel exists).
+  seedFromEnvIfEmpty(channelRepo, profileRepo, config)
+
+  // Per-delivery adapter deps. Real HTTP/mail transports are only constructed
+  // when not overridden, so fakes never touch fetch/nodemailer. Note: the mail
+  // transport is a single shared SMTP connection built from the seed's email
+  // config -- per-instance SMTP credentials are a known limitation deferred to
+  // the admin rewrite; webhook-style channels (the hot-reload cases) take
+  // their URL straight from each instance's config.
+  const channelDeps: ChannelDeps = {
+    http: overrides.http ?? new FetchHttpClient(),
+    mail: overrides.mail ?? new NodemailerTransport(config.channelConfig.email ?? {}),
+    logger
+  }
 
   const queue =
     overrides.queue ??
     new BullMqQueue({ redisUrl: config.redisUrl, retry: config.retry })
 
-  const activeChannelNames = [...channels.keys()]
-  const tokenResolver = createTokenResolver(config.profiles)
-
-  const profilesByName = new Map<string, Profile>(
-    config.profiles.map((profile) => [profile.name, profile])
-  )
-
-  const dispatchService = new DispatchService({
-    queue,
-    logger,
-    activeChannels: new Set(activeChannelNames),
-    resolveProfile: (name) => {
-      const profile = profilesByName.get(name)
-      if (!profile) {
-        throw new Error(`Unknown profile "${name}"`)
-      }
-      return profile
-    }
-  })
-
-  const deliveryService = new DeliveryService({ channels, clock, logger })
+  const dispatchService = new DispatchService({ queue, channelRepo, profileRepo, logger })
+  const deliveryService = new DeliveryService({ channelRepo, channelDeps, clock, logger })
 
   return {
     queue,
-    buildServerDeps: () => ({ queue, tokenResolver, activeChannelNames, logger }),
+    buildServerDeps: () => ({ queue, profileRepo, channelRepo, logger }),
     registerWorkers: () => {
       queue.onDispatch((job) => dispatchService.handleDispatch(job))
-      // Re-throw is preserved: deliver() throws on channel failure so the
-      // queue records a failed delivery / retries -- other channels' jobs
-      // are independent, giving partial-failure isolation.
+      // Re-throw is preserved: deliver() throws on send failure so the queue
+      // records a failed delivery / retries -- other instances' jobs are
+      // independent, giving partial-failure isolation.
       queue.onDelivery(async (job) => {
         await deliveryService.deliver(job)
       })
     },
     close: async () => {
       await queue.close()
+      db?.close()
     }
   }
 }

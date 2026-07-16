@@ -5,7 +5,6 @@
  * so tests can inject fakes with zero network/Redis/SMTP.
  */
 import type {
-  Profile,
   DispatchJob,
   DeliveryJob,
   ChannelInstance,
@@ -36,11 +35,6 @@ export interface QueuePort {
   onDelivery(handler: (job: DeliveryJob) => Promise<void>): void
   health(): Promise<boolean>
   close(): Promise<void>
-}
-
-/** Resolves a Bearer token to its profile, or null when unknown. */
-export interface TokenResolver {
-  resolve(token: string | undefined): Profile | null
 }
 
 /**

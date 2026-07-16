@@ -93,11 +93,13 @@ export interface ChannelRegistryEntry {
 export interface AppConfig {
   port: number
   redisUrl: string
-  /** Parsed from TOKENS env var. */
+  /** Filesystem path to the SQLite DB (env DB_PATH). */
+  dbPath: string
+  /** Parsed from TOKENS env var (seed input for the DB on first boot). */
   profiles: Profile[]
-  /** Parsed from CHANNELS_ENABLED env var. */
+  /** Parsed from CHANNELS_ENABLED env var (seed input). */
   channelsEnabled: string[]
-  /** Per-channel credentials, keyed by channel name. */
+  /** Per-channel credentials read from env, keyed by channel type (seed input). */
   channelConfig: Record<string, Record<string, string>>
   retry: {
     attempts: number
