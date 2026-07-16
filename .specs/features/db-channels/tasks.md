@@ -1,7 +1,7 @@
 # DB-backed Named Channel Instances — Tasks
 
 **Spec**: `.specs/features/db-channels/spec.md`
-**Status**: Phases 1-3 done; Phase 4 (docker/docs/migration) next. — 248 tests (Docker-backed full suite), build ok. See STATE.md CURRENT WORK.
+**Status**: ALL PHASES DONE — pending Verifier. 248 tests (Docker-backed full suite), build ok. Live migration + smoke passed against the real stack (seed, hot-reload add/delete, default-channel send). See STATE.md CURRENT WORK.
 **Design (inline)**: SQLite (`better-sqlite3`) behind repository ports (Ports & Adapters, like the rest). Registry keyed by TYPE; adapters built per-instance from DB config at delivery time (hot-reload). Admin panel edits the DB live (no compose-apply). `.env` keeps infra only. Auto-seed from legacy `.env` on empty DB.
 
 ## Test Coverage Matrix
@@ -83,10 +83,11 @@ Phase 4 (docker/docs):     D11
 **Commit**: `feat(admin): named-instance management ui`
 **Note**: added `GET /api/channel-types` (from `requiredConfigByChannel`) so the Add-channel picker never hardcodes the 7 types. Pure helpers (all `.test.js`): `admin-instance-id.js` (slugify/isValidChannelId, mirrors backend's slug regex), `admin-channel-completeness.js` (missing-required-key check for the inline warning), `admin-config-payload.js` (assembles the working state into the exact PUT body, trimming stray config keys), `admin-defaults.js` (prune-on-disable adapted to instance ids, now also prunes deleted instances). Profile chips list ALL instances (not just enabled) by label with id as `title` tooltip. **Fixed** `vitest.config.ts`: its `include` never matched `src/**/*.test.js`, so `admin-defaults.test.js` silently ran 0 assertions since Amendment 1 -- now included, and this phase's new `.test.js` files actually execute under `npm run test:unit`.
 
-### D11: Docker volume + docs + migration + smoke
-**What**: compose named volume mounted at `/data` for the SQLite file; `DB_PATH` env; `.env.example` trimmed to infra + note channels live in DB now; README rewrite (DB config, hot-reload, multiple named channels per company, migration note); live smoke: recreate stack → existing setup migrated → add a 2nd slack instance → two profiles route to different slacks → change config, next send reflects it (no restart).
-**Requirement**: DBCH-10 · **Tests**: none · **Gate**: build + full
+### D11: Docker volume + docs + migration + smoke ✅
+**What**: compose named volume (`notify-data`) mounted at `/data` on api/worker/admin, `DB_PATH=/data/notify-hub.db` on all three (single shared SQLite file, WAL multi-process); admin dropped `ENV_FILE_PATH` + the writable repo bind-mount (kept `docker.sock` + a read-only `docker-compose.yml` mount solely for the worker-log tail used by status/test-send); `.env.example` header note (channels/profiles live in the DB, `.env` channel vars = first-boot seed only) + `DB_PATH`; README rewrite (architecture, configuration, admin panel sections -- DB is the source of truth, hot-reload, named instances per type, no Save & Apply/restart); `scripts/setup-env.sh` header note (first-boot seed only, ongoing management in the panel).
+**Requirement**: DBCH-10 · **Tests**: none (build+full gate) · **Gate**: build + full
 **Commit**: `feat(docker): sqlite volume, docs and migration`
+**Live migration + smoke** (real stack, real `.env`): `npm run build && npm run test` → 248 green. `docker compose up -d --build` recreated all 4 services onto the new volume/env. `GET /health` → 200 `{status:ok,redis:true}`. `GET /channels` (gateway) and `GET /api/config` (admin) both showed the legacy `.env` seeded into 5 instances (`ntfy`,`email`,`slack`,`telegram`,`discord`, all `enabled:true` -- every channel had its required keys present, including slack's functionally-invalid-but-present webhook, matching the seed's presence-only check) and profile `richard` defaulting to `ntfy`. Hot-reload proof: admin `PUT /api/config` added a second ntfy instance (`ntfy-test`, random throwaway ntfy.sh topic) with no restart -- `GET /channels` listed it immediately, `POST /notify {channels:[ntfy-test]}` produced worker log `"channel":"ntfy-test" ... notification sent` ~6s later; a second `PUT` removed it and `GET /channels` confirmed it was gone. Default-channel proof: `POST /notify` with no `channels` field delivered on `ntfy` (the profile default) per worker log. `docker compose ps` -- all 4 services Up; admin UI reachable. No src changes needed (no deploy-blocking bug surfaced).
 
 ## Validation
 Verifier runs after D11 (author ≠ verifier): spec-anchored DBCH-01..10 + discrimination sensor (esp. hot-reload actually re-reads, per-profile isolation, dup-id reject, seed idempotency); writes `.specs/features/db-channels/validation.md`.
