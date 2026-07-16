@@ -5,6 +5,10 @@
 
 FROM node:24-alpine AS build
 WORKDIR /app
+# better-sqlite3 (DBCH-01) is a native addon: alpine ships no prebuilt musl
+# binary for every arch, so `npm ci` falls back to compiling from source,
+# which needs a C++ toolchain + python (node-gyp).
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci
 COPY tsconfig.json ./
@@ -14,6 +18,10 @@ RUN npm run build
 FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Runtime does its own `npm ci --omit=dev` (not a copy of build's
+# node_modules), so it re-triggers better-sqlite3's install script and needs
+# the same toolchain here too.
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
