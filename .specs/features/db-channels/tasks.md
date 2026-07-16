@@ -1,7 +1,7 @@
 # DB-backed Named Channel Instances — Tasks
 
 **Spec**: `.specs/features/db-channels/spec.md`
-**Status**: Phase 1 (D1-D3) DONE — 215 tests. Phase 2 (D4-D8) next. See STATE.md CURRENT WORK.
+**Status**: Phases 1-2 done; Phase 3 (admin) next. — 215 tests (Docker-backed full suite), build ok. See STATE.md CURRENT WORK.
 **Design (inline)**: SQLite (`better-sqlite3`) behind repository ports (Ports & Adapters, like the rest). Registry keyed by TYPE; adapters built per-instance from DB config at delivery time (hot-reload). Admin panel edits the DB live (no compose-apply). `.env` keeps infra only. Auto-seed from legacy `.env` on empty DB.
 
 ## Test Coverage Matrix
@@ -43,30 +43,33 @@ Phase 4 (docker/docs):     D11
 **Requirement**: DBCH-03 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(db): seed from legacy .env when empty`
 
-### D4: Type-keyed registry + per-instance build
+### D4: Type-keyed registry + per-instance build ✅
 **What**: refactor `channel-registry.ts` to key by TYPE (`type → {factory, requiredConfig}`); `buildInstance(instance, deps)` → registry[type].factory(instance.config, deps) wrapped in Truncating/Logging decorators. Keep existing adapters unchanged (they already take (config, deps)).
 **Requirement**: DBCH-04 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): type-keyed registry and per-instance builder`
 
-### D5: Delivery read-through (hot-reload)
+### D5: Delivery read-through (hot-reload) ✅
 **What**: delivery service loads the instance from `ChannelRepository` at delivery time, builds the adapter, sends; missing/disabled → logged skip; build `DeliveryResult`.
 **Requirement**: DBCH-05 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(delivery): per-delivery instance load for hot-reload`
 
-### D6: Dispatch by instance id
+### D6: Dispatch by instance id ✅
 **What**: resolve requested instance ids or profile default ids ∩ enabled (from repo); empty → logged no-op; fan out one delivery job per resolved instance id.
 **Requirement**: DBCH-06 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(dispatch): resolve named instance ids from db`
+**Note**: `DispatchJob` gained `profileId` (authoritative; profile defaults resolved from DB at dispatch time) + optional `profileName` (logs only); additive/versionable.
 
-### D7: API rewire to DB
+### D7: API rewire to DB ✅
 **What**: token→profile via `ProfileRepository`; `POST /notify` validates `channels` are known instance ids (400 unknown); `GET /channels` returns instances (id,label,type,enabled) + profile defaults. e2e with temp DB.
 **Requirement**: DBCH-07 · **Tests**: e2e · **Gate**: full
 **Commit**: `feat(api): notify and channels by instance id from db`
+**Note**: `GET /channels` shape → `{channels:[{id,label,type,enabled}], defaultChannels:[ids]}`; MCP `list_channels` reformatted for it. `token-resolver` retired from the API path (deleted in D8). `/notify` fails early on non-existent (not disabled) instance ids.
 
-### D8: Container + entrypoints on DB
+### D8: Container + entrypoints on DB ✅
 **What**: `buildContainer` wires DB + repos; api/worker open DB, run seed; remove startup fail-fast/`buildActive` (config now dynamic). Graceful DB close on shutdown.
 **Requirement**: DBCH-05,07 · **Tests**: integration (temp DB end-to-end fan-out) · **Gate**: full
 **Commit**: `feat(core): wire gateway to sqlite repositories`
+**Note**: `loadConfig` added `DB_PATH` (default `./data/notify-hub.db`) and relaxed the channel fail-fast (missing-cred/unknown-type now parse as seed input, never throw). Deleted `channel-builder.ts`+`buildActive` (coverage → `build-instance.test.ts`) and `token-resolver.ts`/`TokenResolver` port (coverage → `ProfileRepository.resolveByToken` + auth e2e). Known limitation: email SMTP is a single shared transport from the seed's email config (per-instance SMTP deferred to admin rewrite); webhook-style channels hot-reload fully.
 
 ### D9: Admin API CRUD on DB
 **What**: replace `.env` config routes with DB-backed: `GET /api/config` → {channels[], profiles[]}; `PUT /api/config` transactional upsert/delete with write-time validation (dup id, enabled-missing-cred → 400 naming it, profile ref must exist+enabled); `POST /api/test-send {channelId}`; DROP `/api/apply` + compose runner + `.env` file store for channels. Keep `.env` store only if still needed for infra (else remove).
