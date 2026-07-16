@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Interactive, secure .env setup for notify-hub.
 #
+# NOTE (DBCH-10): this only seeds the FIRST boot. Channels/profiles written
+# here are read exactly once, when the service starts against an empty
+# SQLite database (spec DBCH-03) -- after that, the DB is the source of
+# truth and ongoing management (add/edit/delete channels, change profile
+# defaults) happens live in the admin panel (http://127.0.0.1:8081), not by
+# re-running this script or hand-editing .env.
+#
 # - Secrets are read with hidden input (never echoed, never in shell history).
 # - Press Enter to skip any channel you don't want; CHANNELS_ENABLED is built
 #   from what you actually filled in.

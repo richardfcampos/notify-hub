@@ -1,14 +1,16 @@
 # Full self-hosted stack (spec NOTIF-12): redis (durable queue backing
 # store), api (accepts POST /notify, enqueues dispatch jobs), worker
 # (processes dispatch + delivery jobs against the channel adapters), admin
-# (dockerized admin panel, spec Amendment 1 / ADMIN-08).
+# (dockerized admin panel, spec Amendment 1 / ADMIN-08; config CRUD rewired
+# to SQLite by DBCH-08/DBCH-10 -- the admin only shells out to `docker
+# compose` for worker-log tailing now, never to apply config).
 #
-# `name:` is pinned so that `docker compose` invoked FROM INSIDE the admin
-# container (against the same bind-mounted directory, but at a different
-# path -- /config, whose basename is not "notify-hub") still resolves to
-# this exact project. Without it, compose would derive the project name
-# from the mount's basename and manage a second, duplicate stack instead
-# of this one.
+# `name:` is pinned so that `docker compose logs worker`, invoked FROM
+# INSIDE the admin container against its bind-mounted copy of this file
+# (at /config/docker-compose.yml, whose containing directory's basename is
+# "config", not "notify-hub"), still resolves to this exact project.
+# Without it, compose would derive the project name from that basename and
+# look for a different, non-existent stack.
 name: notify-hub
 
 services:
@@ -26,8 +28,15 @@ services:
         required: false
     environment:
       REDIS_URL: redis://redis:6379
+      # SQLite config store (DBCH-01/DBCH-10): channels + profiles live here,
+      # not in .env. Shared with worker + admin via the notify-data volume
+      # (WAL journaling lets all three processes read/write the same file
+      # safely -- see src/db/database.ts).
+      DB_PATH: /data/notify-hub.db
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      - notify-data:/data
     depends_on:
       - redis
     restart: unless-stopped
@@ -53,6 +62,9 @@ services:
         required: false
     environment:
       REDIS_URL: redis://redis:6379
+      DB_PATH: /data/notify-hub.db
+    volumes:
+      - notify-data:/data
     depends_on:
       - redis
     restart: unless-stopped
@@ -76,19 +88,29 @@ services:
     environment:
       ADMIN_HOST: 0.0.0.0
       ADMIN_PORT: ${ADMIN_PORT:-8081}
-      # Directory bind-mount (not a single-file mount): required so the
-      # admin's atomic tmp-write+rename and timestamped `.env.backup.*`
-      # files land on the host directory instead of breaking against a
-      # single-file mount's inode semantics.
-      ENV_FILE_PATH: /config/.env
+      # Same shared SQLite file as api/worker (DBCH-08/DBCH-10): the panel
+      # reads/writes channels + profiles directly -- a Save is live for the
+      # very next request/delivery, no docker compose apply step.
+      DB_PATH: /data/notify-hub.db
+      # Working directory for the worker-log-tail `docker compose`
+      # invocation (status/test-send poll) -- config CRUD is DB-backed and
+      # never shells out; this is the ONLY remaining use of the socket
+      # mount + compose-dir mount below.
       COMPOSE_DIR: /config
       NOTIFY_GATEWAY_URL: http://api:${PORT:-8080}
     volumes:
-      - .:/config
-      # Grants the container control of the host's Docker daemon so Save &
-      # Apply can run `docker compose up -d --no-build api worker` against
-      # the real stack. Accepted trade-off for a personal, localhost-bound
-      # tool (same pattern as Portainer) -- documented in README.
+      - notify-data:/data
+      # Read-only: the admin no longer writes .env (config moved to the DB,
+      # DBCH-08 dropped the `.env` FileStore/`/api/apply` route). Kept
+      # read-only, project-name-pinned (see `name:` above), solely so
+      # `docker compose logs worker` run from inside this container
+      # resolves to and can read logs from this same stack.
+      - ./docker-compose.yml:/config/docker-compose.yml:ro
+      # Grants the container control of the host's Docker daemon so the
+      # worker-log tail (status + test-send outcome) can run
+      # `docker compose logs worker` against the real stack. Accepted
+      # trade-off for a personal, localhost-bound tool (same pattern as
+      # Portainer) -- documented in README.
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - api
@@ -96,3 +118,7 @@ services:
 
 volumes:
   redis-data:
+  # Single named volume shared by api/worker/admin: one SQLite file at
+  # /data/notify-hub.db, survives container recreate; backup = copy the
+  # file (or `docker run --rm -v notify-hub_notify-data:/data ... tar`).
+  notify-data:

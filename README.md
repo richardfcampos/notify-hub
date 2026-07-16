@@ -28,21 +28,33 @@ a Redis-backed queue with retries and per-channel dead-lettering.
 client (curl / hook script)
   -> POST /notify (Bearer token)                [Fastify API]
   -> enqueue dispatch job                        [Redis / BullMQ]
-  -> dispatch worker resolves channel set
-  -> one delivery job per channel                [Redis / BullMQ]
-  -> delivery worker sends via the channel's adapter
+  -> dispatch worker resolves the profile's default (or requested)
+     channel instance ids against SQLite                  [config store]
+  -> one delivery job per resolved instance      [Redis / BullMQ]
+  -> delivery worker loads that instance's type + config from SQLite
+     at send time and builds/sends via the type's adapter
      (ntfy / telegram / email / slack / discord / whatsapp / webhook)
 ```
 
 - **API** only validates + enqueues; it never sends inline, so a slow/broken
   channel can't make `/notify` hang.
-- **Worker** does the actual fan-out and delivery; each channel gets its own
-  job so retries/failures are isolated per channel (one channel down doesn't
-  block the others).
-- **Channels are pluggable**: each one implements the same tiny interface
-  (`send(notification)`); enabling one is a config toggle + credentials, and
-  adding a brand-new one is a small adapter file (see the generic `webhook`
-  adapter as the reference example).
+- **Worker** does the actual fan-out and delivery; each channel *instance*
+  gets its own job so retries/failures are isolated per instance (one
+  company's Slack going down doesn't block another's).
+- **Config lives in SQLite, read fresh at request/delivery time** -- there is
+  no in-memory snapshot to restart. Add a channel, flip enabled, edit a
+  webhook URL, or repoint a profile's defaults in the admin panel and the
+  very next `/notify` call already uses it (hot-reload, no
+  `docker compose restart`).
+- **Channels are typed, instances are named**: the six adapter *types*
+  (ntfy/telegram/email/slack/discord/webhook) are the pluggable interface
+  (`send(notification)`); on top of a type you can create any number of
+  named *instances* -- `acme-slack`, `globex-slack`, `pessoal-discord` --
+  each with its own id, label and credentials. Profiles pick which instance
+  ids they route to by default; `POST /notify`'s `channels` field targets
+  instance ids directly. Adding a brand-new *type* is still a small adapter
+  file (see the generic `webhook` adapter as the reference example); adding
+  a new *instance* of an existing type is just a panel click, no code.
 
 ## Quickstart
 
@@ -75,34 +87,58 @@ curl -X POST http://localhost:8080/notify \
 | `title` | no | defaults to `"Notification"` |
 | `priority` | no | one of `low`, `default`, `high`, `urgent` |
 | `tags` | no | string array, passed through to channels that support it (e.g. ntfy) |
-| `channels` | no | subset of your enabled channels to target this send to; omit to use the token's default channels |
+| `channels` | no | subset of channel **instance ids** (from `GET /channels`) to target this send to; omit to use the token's profile default instances |
 | `metadata` | no | free-form object, passed through to channel adapters (e.g. the `webhook` channel) |
 
 Responses: `202 {jobId}` (enqueued) · `400` (invalid body / unknown channel
-name) · `401` (missing/unknown token) · `503` (queue unreachable, so the
-caller never hangs).
+instance id) · `401` (missing/unknown token) · `503` (queue unreachable, so
+the caller never hangs).
+
+`GET /channels` (same Bearer auth) lists every configured instance and the
+calling token's profile defaults:
+
+```json
+{
+  "channels": [
+    { "id": "acme-slack", "label": "Acme Slack", "type": "slack", "enabled": true },
+    { "id": "ntfy", "label": "Ntfy", "type": "ntfy", "enabled": true }
+  ],
+  "defaultChannels": ["ntfy"]
+}
+```
 
 ## Configuration
 
-All config is env vars (see [`.env.example`](./.env.example) for every key).
-Key ones:
+**Channels and token profiles live in SQLite and are managed live in the
+[admin panel](#admin-panel)** (`http://127.0.0.1:8081`) -- add, edit, enable/
+disable, or delete a channel instance, or change a profile's default
+instances, and it takes effect on the very next `/notify` call. There is no
+"apply" or restart step.
 
-- `PORT` -- API listen port (compose maps `${PORT:-8080}` on the host).
-- `TOKENS` -- `;`-separated `name:token:defaultChannel1,defaultChannel2`
-  entries. Example: `phone:supersecrettoken:ntfy,telegram;desktop:othertoken:discord`.
-- `CHANNELS_ENABLED` -- comma-separated list of channels to activate, e.g.
-  `ntfy,telegram,discord`. **A channel not listed here is never attempted**,
-  even if a request asks for it. **A listed channel missing its required
-  credentials makes the service refuse to start**, naming the channel and
-  the missing key -- so misconfiguration is caught immediately, not as a
-  silent drop later.
+`.env` (see [`.env.example`](./.env.example)) only carries two kinds of
+vars now:
+
+- **Infra**: `PORT` (API listen port), `REDIS_URL`, `DB_PATH` (SQLite file
+  location; compose points this at a named volume so it survives container
+  recreates), `RETRY_ATTEMPTS`/`RETRY_BACKOFF_MS`, `ADMIN_PORT`/`ADMIN_BIND`.
+- **First-boot seed**: `TOKENS` and `CHANNELS_ENABLED` plus each channel's
+  credential vars (`NTFY_URL`, `SLACK_WEBHOOK_URL`, etc.) are read **once**,
+  only when the service starts against an **empty** database -- each
+  enabled channel becomes a named instance (id = its type, e.g. `slack`),
+  and `TOKENS` entries become profiles. Once the database has any channel
+  in it, these vars are ignored entirely; from then on, manage everything
+  in the panel. Missing credentials for an otherwise-enabled seed channel
+  seed it as a *disabled* instance rather than blocking boot -- fix its
+  config in the panel and flip it on.
 
 ## Channels
 
-Each row is the env keys a channel needs once it's in `CHANNELS_ENABLED`.
+Each row is the config keys a channel **instance** of that type needs (set
+per-instance in the admin panel; the same keys the seed reads from `.env`
+on first boot).
 
-| Channel | Env keys | Setup notes |
-| ------- | -------- | ----------- |
+| Type | Config keys | Setup notes |
+| ---- | ----------- | ----------- |
 | `ntfy` | `NTFY_URL`, `NTFY_TOPIC` | Use `https://ntfy.sh` (public) or your own self-hosted ntfy server; subscribe to the topic in the ntfy app |
 | `telegram` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Create a bot via [@BotFather](https://t.me/BotFather); get your chat id by messaging the bot then hitting `getUpdates` |
 | `email` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_TO` | Any SMTP provider (Gmail app password, SendGrid, etc.) |
@@ -111,10 +147,17 @@ Each row is the env keys a channel needs once it's in `CHANNELS_ENABLED`.
 | `whatsapp` | `WHATSAPP_PHONE`, `WHATSAPP_APIKEY` | Free personal API via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/) -- message their bot to activate, rate-limited |
 | `webhook` | `WEBHOOK_URL` | Reference extensibility adapter: POSTs the full notification JSON to any URL you control (Gotify, a custom listener, etc.) |
 
-Adding a brand-new channel: implement the `NotificationChannel` interface
-(one `send()` method) in `src/channels/adapters/`, export a
-`ChannelRegistryEntry` (factory + required env keys), and add one line to
-`src/channels/channel-registry.ts`. No other core changes needed.
+You can create **any number of named instances per type** -- e.g. an
+`acme-slack` and a `globex-slack`, each with its own webhook URL -- from the
+"Add channel" flow in the admin panel: pick the type, give it an id (slug)
+and a label, fill in that type's config keys, save. Each profile then picks
+which instance ids it defaults to.
+
+Adding a brand-new channel **type**: implement the `NotificationChannel`
+interface (one `send()` method) in `src/channels/adapters/`, export a
+`ChannelRegistryEntry` (factory + required config keys), and add one line to
+`src/channels/channel-registry.ts`. No other core changes needed -- the
+admin panel picks up new types automatically via `GET /api/channel-types`.
 
 ## Claude Code hook
 
@@ -136,22 +179,26 @@ direct Redis access). See
 
 ## Admin panel
 
-A local, dark-themed dashboard for managing everything above without hand-
-editing `.env`:
+A local, dark-themed dashboard for managing everything above directly in
+SQLite -- no `.env` hand-editing, no restart:
 
-- View every channel (ntfy, Telegram, Email, Slack, Discord, WhatsApp,
-  webhook), toggle it on/off, and edit its credentials -- masked by default,
-  revealed with one click.
-- Manage token profiles (`TOKENS`): add/remove, edit the token, and pick
-  each profile's default channels.
-- **Save & Apply** validates, backs up `.env` (timestamped), writes the new
-  file, and runs `docker compose up -d --no-build api worker` -- one click,
-  no terminal.
-- **Send test** per channel posts a real notification and shows the actual
+- **Named channel instances**: add any number of instances of a type (e.g.
+  `acme-slack` + `globex-slack`, both type `slack`, each its own webhook) --
+  pick a type from the live `GET /api/channel-types` list, give it an id
+  (slug) + label, fill in that type's credentials (masked by default,
+  revealed with one click), toggle enabled, or delete it.
+- Manage token profiles: add/remove, edit the token, and pick each
+  profile's default channel **instances** by label (chips).
+- **Save** validates (dup id, unknown type, an enabled instance missing a
+  required key, a profile referencing a disabled/missing instance) and
+  writes straight to the DB as an upsert+delete diff against the current
+  state -- **live for the very next `/notify` call, no `docker compose`
+  apply/restart step.**
+- **Send test** per instance posts a real notification and shows the actual
   delivery outcome (✅ sent, or the real failure reason ❌), not just
   "enqueued".
-- Live gateway status (health, redis, active channels) and a tail of recent
-  worker deliveries.
+- Live gateway status (health, redis, configured instances) and a tail of
+  recent worker deliveries.
 
 Comes up automatically as part of the stack -- no extra step:
 
@@ -179,15 +226,17 @@ to make it localhost-only. The explicit bind template is asserted by
 `src/admin/compose-invariants.test.ts`. The host-side dev mode
 (`npm run admin`) binds `127.0.0.1` by default regardless.
 
-**Docker-socket trade-off:** the `admin` service mounts
-`/var/run/docker.sock` so Save & Apply can run
-`docker compose up -d --no-build api worker` against the real stack from
-inside the container (it never recreates the `admin` service itself --
-that would kill the container mid-request). This gives the admin
+**Docker-socket trade-off:** config CRUD never touches Docker -- a Save
+writes straight to the shared SQLite volume and is live immediately. The
+`admin` service still mounts `/var/run/docker.sock` (plus a read-only copy
+of `docker-compose.yml`) for one narrower purpose: the status page and
+"Send test" outcome both tail `docker compose logs worker` to show real
+delivery results instead of just "enqueued". This gives the admin
 container control of the host's Docker daemon, the same pattern used by
-tools like Portainer. Accepted because the panel is a personal tool on a
-trusted network -- combined with the reachability note above, treat
-"who can open the panel" as "who can administer this Docker host".
+tools like Portainer, scoped in code to log reads only (no compose
+up/down/restart is ever invoked). Accepted because the panel is a personal
+tool on a trusted network -- combined with the reachability note above,
+treat "who can open the panel" as "who can administer this Docker host".
 
 ## Development
 
