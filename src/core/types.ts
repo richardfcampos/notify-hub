@@ -105,15 +105,27 @@ export interface AppConfig {
   }
 }
 
-/** Job enqueued by the API; the dispatch worker fans this out per channel. */
+/**
+ * Job enqueued by the API; the dispatch worker fans this out per instance.
+ * `profileId` is the ProfileRecord id and is authoritative: when
+ * `requestedChannels` is absent the dispatcher resolves the profile's
+ * default instance ids from the DB at dispatch time (so profile edits also
+ * hot-reload). `profileName` is carried for logs/tracing only. Adding fields
+ * keeps the queue payload backward-compatible (versionable).
+ */
 export interface DispatchJob {
   notification: Notification
-  profileName: string
+  profileId: string
+  profileName?: string
   requestedChannels?: string[]
   dedupKey?: string
 }
 
-/** One per-channel job produced by the dispatch worker. */
+/**
+ * One per-instance job produced by the dispatch worker. `channel` is the
+ * named channel INSTANCE id (e.g. `acme-slack`), resolved to its config at
+ * delivery time by the delivery service.
+ */
 export interface DeliveryJob {
   notification: Notification
   channel: string
