@@ -1,10 +1,13 @@
 /**
- * CommandRunner port (ADMIN-04): the seam /api/apply, /api/status and
- * /api/test-send use to shell out to `docker compose` without any route
- * handler importing child_process directly. `NodeCommandRunner` always
- * uses `execFile` (args passed as an array, never a shell-interpolated
- * string) so arguments can never be reinterpreted by a shell. Tests use
- * `FakeCommandRunner` (test/helpers/fakes.ts) to script results instantly.
+ * CommandRunner port (ADMIN-04, scope narrowed to worker-log tailing by
+ * DBCH-08): the seam /api/status and /api/test-send use to shell out to
+ * `docker compose logs worker` without any route handler importing
+ * child_process directly (config CRUD is DB-backed and never shells out --
+ * DBCH-08's hot-reload dropped the old `/api/apply` compose-restart path).
+ * `NodeCommandRunner` always uses `execFile` (args passed as an array, never
+ * a shell-interpolated string) so arguments can never be reinterpreted by a
+ * shell. Tests use `FakeCommandRunner` (test/helpers/fakes.ts) to script
+ * results instantly.
  */
 import { execFile, type ExecFileException } from 'node:child_process'
 

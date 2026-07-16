@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="admin-theme.css" />
   <link rel="stylesheet" href="admin-controls.css" />
   <link rel="stylesheet" href="admin-sections.css" />
+  <link rel="stylesheet" href="admin-instances.css" />
 </head>
 <body>
   <header class="topbar">
@@ -34,7 +35,11 @@
     <div id="banner-area"></div>
 
     <section class="panel" aria-labelledby="channels-heading">
-      <h2 id="channels-heading">Channels</h2>
+      <div class="panel-header">
+        <h2 id="channels-heading">Channels</h2>
+        <button id="add-channel-btn" class="btn btn-ghost" type="button">+ Add channel</button>
+      </div>
+      <div id="add-channel-area"></div>
       <div id="channel-grid" class="channel-grid"></div>
     </section>
 
@@ -59,7 +64,7 @@
     <div class="save-bar-actions">
       <span id="save-steps" class="save-steps"></span>
       <button id="discard-btn" class="btn btn-ghost" type="button">Discard</button>
-      <button id="save-btn" class="btn btn-primary" type="button">Save &amp; Apply</button>
+      <button id="save-btn" class="btn btn-primary" type="button">Save</button>
     </div>
   </footer>
 

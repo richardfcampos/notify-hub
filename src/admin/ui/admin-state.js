@@ -1,10 +1,11 @@
 /**
  * Central mutable state for the admin dashboard (ADMIN-07: "track unsaved
- * changes"): the in-memory AdminConfig being edited plus the dirty flag
- * driving the sticky save bar. Render modules mutate the config object
- * returned by getConfig() directly (see admin-channels.js/admin-profiles.js)
- * and call markEdited() -- no framework, just a tiny pub/sub so the save
- * bar reacts without polling.
+ * changes"): the in-memory working config being edited -- `{channels:
+ * ChannelInstance[], profiles: ProfileRecord[]}` (DBCH-08/09) -- plus the
+ * dirty flag driving the sticky save bar. Render modules mutate the config
+ * object returned by getConfig() directly (see
+ * admin-channels.js/admin-profiles.js) and call markEdited() -- no
+ * framework, just a tiny pub/sub so the save bar reacts without polling.
  */
 
 let config = null

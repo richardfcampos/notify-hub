@@ -1,7 +1,9 @@
 /**
- * Renders the profiles/tokens section (ADMIN-07, TOKENS model): one card
- * per profile with a name input, masked+reveal+copy token, and toggleable
- * default-channel chips restricted to currently-enabled channels. Add/remove
+ * Renders the profiles/tokens section (DBCH-09, tasks.md D10): one card per
+ * profile with a name input, masked+reveal+copy token, and toggleable
+ * default-channel chips listing EVERY channel instance (not just enabled
+ * ones -- an operator can pre-select a not-yet-enabled instance; the id
+ * shows as a tooltip since the label is what's displayed). Add/remove
  * mutate config.profiles and force a section re-render (cheap: a handful of
  * profiles); field edits and chip toggles mutate in place without
  * re-rendering so typing keeps focus.
@@ -11,25 +13,20 @@ import { ICON_EYE, ICON_EYE_OFF, ICON_COPY, ICON_TRASH } from './admin-icons.js'
 import { markEdited } from './admin-state.js'
 import { showToast } from './admin-toast.js'
 
-function enabledChannelNames(config) {
-  return Object.entries(config.channels)
-    .filter(([, entry]) => entry.enabled)
-    .map(([name]) => name)
-}
-
-function chip(name, profile) {
-  const active = profile.defaultChannels.includes(name)
+function chip(channel, profile) {
+  const active = profile.defaultChannels.includes(channel.id)
   return el(
     'button',
     {
       type: 'button',
       class: `chip-toggle${active ? ' active' : ''}`,
+      title: channel.id,
       'aria-pressed': String(active),
       onclick: (e) => {
-        const idx = profile.defaultChannels.indexOf(name)
+        const idx = profile.defaultChannels.indexOf(channel.id)
         const willBeActive = idx === -1
         if (willBeActive) {
-          profile.defaultChannels.push(name)
+          profile.defaultChannels.push(channel.id)
         } else {
           profile.defaultChannels.splice(idx, 1)
         }
@@ -38,7 +35,7 @@ function chip(name, profile) {
         e.currentTarget.setAttribute('aria-pressed', String(willBeActive))
       }
     },
-    name
+    channel.label || channel.id
   )
 }
 
@@ -111,13 +108,13 @@ function profileCard(profile, index, config, rerender) {
   const chipsRow = el(
     'div',
     { class: 'chips-row' },
-    enabledChannelNames(config).map((name) => chip(name, profile))
+    config.channels.map((channel) => chip(channel, profile))
   )
 
   return el('article', { class: 'card profile-card' }, [
     el('div', { class: 'profile-row' }, [nameInput, tokenInput, eyeBtn, copyBtn, removeBtn]),
     el('div', { class: 'field-label' }, 'Default channels'),
-    chipsRow.childNodes.length > 0 ? chipsRow : el('p', { class: 'muted empty-state' }, 'no channels enabled yet')
+    chipsRow.childNodes.length > 0 ? chipsRow : el('p', { class: 'muted empty-state' }, 'no channels yet')
   ])
 }
 
@@ -136,6 +133,11 @@ export function renderProfilesList(config) {
   })
 }
 
+/** Generates a profile id independent of the (editable) name/token -- not shown in the UI, just the DB primary key/join-table anchor. */
+function generateProfileId() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `profile-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 /** Wires the "Add profile" button; `getCurrentConfig` is called lazily on click so it always reads the live config reference (not one captured at wiring time, before the first load completes). */
 export function wireAddProfileButton(getCurrentConfig) {
   document.getElementById('add-profile-btn').addEventListener('click', () => {
@@ -143,7 +145,7 @@ export function wireAddProfileButton(getCurrentConfig) {
     if (!config) {
       return
     }
-    config.profiles.push({ name: '', token: '', defaultChannels: [] })
+    config.profiles.push({ id: generateProfileId(), name: '', token: '', defaultChannels: [] })
     markEdited()
     renderProfilesList(config)
   })

@@ -1,10 +1,11 @@
 /**
- * Thin fetch wrapper for the admin API (ADMIN-02..06). Every function
- * resolves -- never rejects -- with a uniform `{ok, status, data}` shape so
- * call sites don't need try/catch: a network failure (admin server
+ * Thin fetch wrapper for the admin API (ADMIN-02..06, DBCH-08/09). Every
+ * function resolves -- never rejects -- with a uniform `{ok, status, data}`
+ * shape so call sites don't need try/catch: a network failure (admin server
  * restarting, gateway unreachable) degrades to `{ok:false, status:0,
  * data:{error:message}}` instead of throwing and breaking the rest of the
- * panel.
+ * panel. `saveConfig` is now the only write path -- there is no separate
+ * apply step (a save is live immediately).
  */
 
 async function request(method, path, body) {
@@ -30,6 +31,6 @@ async function request(method, path, body) {
 
 export const fetchConfig = () => request('GET', '/api/config')
 export const saveConfig = (cfg) => request('PUT', '/api/config', cfg)
-export const applyConfig = () => request('POST', '/api/apply')
 export const fetchStatus = () => request('GET', '/api/status')
-export const sendTest = (channel) => request('POST', '/api/test-send', { channel })
+export const fetchChannelTypes = () => request('GET', '/api/channel-types')
+export const sendTest = (channelId) => request('POST', '/api/test-send', { channelId })

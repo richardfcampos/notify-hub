@@ -1,0 +1,99 @@
+/* Named-instance chrome: label input, immutable id badge, type tag, card
+   footer, and the inline Add-channel form (DBCH-09). Split out of
+   admin-controls.css to keep that file under the project's file-size
+   guideline -- see admin-theme.css for design tokens and admin-controls.css
+   for the shared card/field/button/switch primitives this builds on. */
+
+.channel-label-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.id-badge {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.type-tag {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.channel-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.field-warning {
+  margin: 6px 0 0;
+  font-size: 0.76rem;
+  color: var(--danger);
+  min-height: 1em;
+}
+
+.field-warning:empty {
+  margin: 0;
+}
+
+/* ---- Add-channel inline form ---- */
+.add-channel-form {
+  margin: 10px 0 16px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-channel-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.add-channel-row select,
+.add-channel-row input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.add-channel-label {
+  flex: 1;
+  min-width: 160px;
+}
+
+.add-channel-id {
+  flex: 1;
+  min-width: 160px;
+}
+
+.add-channel-error {
+  color: var(--danger);
+  font-size: 0.78rem;
+  min-height: 1em;
+  margin: 0;
+}
+
+.add-channel-actions {
+  display: flex;
+  gap: 8px;
+}
