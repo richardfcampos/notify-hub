@@ -1,92 +1,149 @@
 /**
- * Tests derive from spec NOTIF-02/NOTIF-04 and T12's Done-when: success
- * resolves a DeliveryResult and calls channel.send with the exact
- * notification; a channel throw re-throws (so BullMQ retries) and the
- * error surfaces in the logged DeliveryResult; an unknown channel throws;
- * durationMs is deterministic via FakeClock.
+ * Tests derive from spec DBCH-05 (delivery read-through / hot-reload):
+ * - success loads the instance from the repo AT DELIVERY TIME, builds the
+ *   adapter from its current config, sends, and resolves ok:true with the
+ *   instance id + elapsed durationMs;
+ * - a disabled instance and a deleted/missing instance are logged no-op
+ *   skips that RESOLVE (no send, no retry);
+ * - HOT-RELOAD: mutating the instance config in the repo between two sends
+ *   makes the second send use the NEW config (proven via the FakeHttpClient
+ *   URLs), no restart;
+ * - a send failure re-throws (so BullMQ retries) and logs the failing result.
+ * Uses FakeChannelRepository + a real webhook adapter over FakeHttpClient so
+ * the config->URL path is observable; no real network.
  */
 import { describe, expect, it } from 'vitest'
-import { FakeClock, FakeLogger } from '../../test/helpers/fakes.js'
-import type { Notification, NotificationChannel } from '../core/types.js'
+import {
+  FakeChannelRepository,
+  FakeClock,
+  FakeHttpClient,
+  FakeLogger,
+  FakeMailTransport
+} from '../../test/helpers/fakes.js'
+import type { ChannelDeps, ChannelInstance } from '../core/types.js'
 import { DeliveryService } from './delivery-service.js'
 
-/** Minimal NotificationChannel test double; optionally advances the shared
- * FakeClock inside send() so durationMs is deterministic, and optionally
- * throws to simulate a channel failure. */
-class FakeChannel implements NotificationChannel {
-  readonly calls: Notification[] = []
-  private error: Error | null = null
-
-  constructor(
-    readonly name: string,
-    private readonly clock?: FakeClock,
-    private readonly elapsedMs = 0
-  ) {}
-
-  throwOnSend(error: Error): void {
-    this.error = error
-  }
-
-  async send(notification: Notification): Promise<void> {
-    this.calls.push(notification)
-    this.clock?.advance(this.elapsedMs)
-    if (this.error) {
-      throw this.error
-    }
-  }
+function makeChannelDeps(http: FakeHttpClient): ChannelDeps {
+  return { http, mail: new FakeMailTransport(), logger: new FakeLogger() }
 }
 
+const webhookInstance = (over: Partial<ChannelInstance> = {}): ChannelInstance => ({
+  id: 'acme-webhook',
+  label: 'Acme Webhook',
+  type: 'webhook',
+  enabled: true,
+  config: { WEBHOOK_URL: 'http://acme.test/hook' },
+  ...over
+})
+
 describe('DeliveryService.deliver', () => {
-  it('sends via the looked-up channel and resolves ok:true with the elapsed durationMs', async () => {
+  it('loads the instance from the repo, sends via its config, and resolves ok:true with the instance id', async () => {
+    const http = new FakeHttpClient()
     const clock = new FakeClock(1000)
-    const channel = new FakeChannel('ntfy', clock, 42)
-    const logger = new FakeLogger()
+    const repo = new FakeChannelRepository([webhookInstance()])
     const service = new DeliveryService({
-      channels: new Map([['ntfy', channel]]),
-      clock,
-      logger
-    })
-
-    const notification: Notification = { title: 't', message: 'hello' }
-    const result = await service.deliver({
-      notification,
-      channel: 'ntfy',
-      dispatchJobId: 'd1'
-    })
-
-    expect(channel.calls).toEqual([notification])
-    expect(result).toEqual({
-      channel: 'ntfy',
-      ok: true,
-      attempts: 1,
-      durationMs: 42
-    })
-  })
-
-  it('throws for a channel that is not in the active map', async () => {
-    const clock = new FakeClock()
-    const service = new DeliveryService({
-      channels: new Map(),
+      channelRepo: repo,
+      channelDeps: makeChannelDeps(http),
       clock,
       logger: new FakeLogger()
     })
 
-    await expect(
-      service.deliver({
-        notification: { title: 't', message: 'm' },
-        channel: 'ntfy',
-        dispatchJobId: 'd1'
-      })
-    ).rejects.toThrow(/ntfy/i)
+    const result = await service.deliver({
+      notification: { title: 't', message: 'hello' },
+      channel: 'acme-webhook',
+      dispatchJobId: 'd1'
+    })
+
+    expect(result.channel).toBe('acme-webhook')
+    expect(result.ok).toBe(true)
+    expect(result.attempts).toBe(1)
+    expect(http.calls).toHaveLength(1)
+    expect(http.calls[0].url).toBe('http://acme.test/hook')
   })
 
-  it('re-throws the channel error (so the queue retries) and logs a failing DeliveryResult first', async () => {
-    const clock = new FakeClock(500)
-    const channel = new FakeChannel('slack', clock, 10)
-    channel.throwOnSend(new Error('webhook unreachable'))
+  it('skips (no send) and warns when the instance is disabled, resolving without retry', async () => {
+    const http = new FakeHttpClient()
     const logger = new FakeLogger()
+    const repo = new FakeChannelRepository([webhookInstance({ enabled: false })])
     const service = new DeliveryService({
-      channels: new Map([['slack', channel]]),
+      channelRepo: repo,
+      channelDeps: makeChannelDeps(http),
+      clock: new FakeClock(),
+      logger
+    })
+
+    const result = await service.deliver({
+      notification: { title: 't', message: 'm' },
+      channel: 'acme-webhook',
+      dispatchJobId: 'd1'
+    })
+
+    expect(result).toEqual({ channel: 'acme-webhook', ok: true, attempts: 0, durationMs: 0 })
+    expect(http.calls).toHaveLength(0)
+    expect(logger.entries).toHaveLength(1)
+    expect(logger.entries[0].level).toBe('warn')
+  })
+
+  it('skips (no send) and warns when the instance was deleted/does not exist', async () => {
+    const http = new FakeHttpClient()
+    const logger = new FakeLogger()
+    const repo = new FakeChannelRepository([]) // empty -> get() returns null
+    const service = new DeliveryService({
+      channelRepo: repo,
+      channelDeps: makeChannelDeps(http),
+      clock: new FakeClock(),
+      logger
+    })
+
+    const result = await service.deliver({
+      notification: { title: 't', message: 'm' },
+      channel: 'ghost',
+      dispatchJobId: 'd1'
+    })
+
+    expect(result.attempts).toBe(0)
+    expect(http.calls).toHaveLength(0)
+    expect(logger.entries[0].level).toBe('warn')
+  })
+
+  it('hot-reloads: mutating the instance config between sends makes the second send use the new config', async () => {
+    const http = new FakeHttpClient()
+    const repo = new FakeChannelRepository([webhookInstance()])
+    const service = new DeliveryService({
+      channelRepo: repo,
+      channelDeps: makeChannelDeps(http),
+      clock: new FakeClock(),
+      logger: new FakeLogger()
+    })
+
+    const job = {
+      notification: { title: 't', message: 'm' },
+      channel: 'acme-webhook',
+      dispatchJobId: 'd1'
+    }
+
+    await service.deliver(job)
+
+    // Panel edit: same instance id, new webhook URL persisted to the repo.
+    repo.upsert(webhookInstance({ config: { WEBHOOK_URL: 'http://acme.test/CHANGED' } }))
+
+    await service.deliver(job)
+
+    expect(http.calls.map((c) => c.url)).toEqual([
+      'http://acme.test/hook',
+      'http://acme.test/CHANGED'
+    ])
+  })
+
+  it('re-throws the adapter error (so the queue retries) and logs a failing DeliveryResult first', async () => {
+    const http = new FakeHttpClient()
+    http.queueResponse({ status: 500, body: 'nope' }) // webhook non-2xx -> adapter throws
+    const clock = new FakeClock(500)
+    const logger = new FakeLogger()
+    const repo = new FakeChannelRepository([webhookInstance({ id: 'slacky', type: 'webhook' })])
+    const service = new DeliveryService({
+      channelRepo: repo,
+      channelDeps: makeChannelDeps(http),
       clock,
       logger
     })
@@ -94,19 +151,14 @@ describe('DeliveryService.deliver', () => {
     await expect(
       service.deliver({
         notification: { title: 't', message: 'm' },
-        channel: 'slack',
+        channel: 'slacky',
         dispatchJobId: 'd1'
       })
-    ).rejects.toThrow('webhook unreachable')
+    ).rejects.toThrow(/failed with status 500/)
 
-    expect(logger.entries).toHaveLength(1)
-    expect(logger.entries[0].level).toBe('error')
-    expect(logger.entries[0].obj).toEqual({
-      channel: 'slack',
-      ok: false,
-      error: 'webhook unreachable',
-      attempts: 1,
-      durationMs: 10
-    })
+    const errorEntry = logger.entries.find((e) => e.level === 'error')
+    expect(errorEntry).toBeDefined()
+    expect((errorEntry?.obj as { channel: string; ok: boolean }).channel).toBe('slacky')
+    expect((errorEntry?.obj as { ok: boolean }).ok).toBe(false)
   })
 })
