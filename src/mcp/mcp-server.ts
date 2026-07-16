@@ -106,12 +106,19 @@ export function buildMcpServer(opts: BuildMcpServerOptions): McpServer {
         return errorResult(`Gateway returned ${response.status}: ${bodyText}`)
       }
 
-      const parsed = parseGatewayBody<{ channels: string[]; defaultChannels: string[] }>(bodyText)
+      const parsed = parseGatewayBody<{
+        channels: Array<{ id: string; label: string; type: string; enabled: boolean }>
+        defaultChannels: string[]
+      }>(bodyText)
       if (!parsed.ok) {
         return parsed.result
       }
+      const lines = parsed.value.channels.map(
+        (c) => `- ${c.label} (${c.id}) [${c.type}] ${c.enabled ? 'enabled' : 'disabled'}`
+      )
+      const listText = lines.length > 0 ? `\n${lines.join('\n')}` : ' (none configured)'
       return textResult(
-        `Active channels: ${parsed.value.channels.join(', ')}\n` +
+        `Channel instances:${listText}\n` +
           `Default channels for this token: ${parsed.value.defaultChannels.join(', ')}`
       )
     }

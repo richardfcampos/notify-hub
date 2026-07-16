@@ -5,16 +5,22 @@
  * Redis. The composition root supplies the production deps.
  */
 import Fastify, { type FastifyInstance } from 'fastify'
-import type { Logger, QueuePort, TokenResolver } from '../core/ports.js'
+import type {
+  ChannelRepository,
+  Logger,
+  ProfileRepository,
+  QueuePort
+} from '../core/ports.js'
 import { registerChannelsRoute } from './routes/channels.js'
 import { registerHealthRoute } from './routes/health.js'
 import { registerNotifyRoute } from './routes/notify.js'
 
 export interface ServerDeps {
   queue: QueuePort
-  tokenResolver: TokenResolver
-  /** Names of channels active in this deployment; used to reject unknown `channels`. */
-  activeChannelNames: string[]
+  /** Token -> profile resolution + profile default channels, read live from the DB. */
+  profileRepo: ProfileRepository
+  /** Named channel instances (id/label/type/enabled), read live from the DB. */
+  channelRepo: ChannelRepository
   logger: Logger
 }
 

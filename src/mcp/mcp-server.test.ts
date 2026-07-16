@@ -137,19 +137,29 @@ describe('buildMcpServer', () => {
   })
 
   describe('list_channels', () => {
-    it('GETs /channels with the auth header and returns the parsed lists', async () => {
+    it('GETs /channels with the auth header and formats the instance list + defaults', async () => {
       const { fetchImpl, calls } = fakeFetch([
-        new Response(JSON.stringify({ channels: ['ntfy', 'telegram'], defaultChannels: ['ntfy'] }), {
-          status: 200
-        })
+        new Response(
+          JSON.stringify({
+            channels: [
+              { id: 'acme-slack', label: 'Acme Slack', type: 'slack', enabled: true },
+              { id: 'globex-slack', label: 'Globex Slack', type: 'slack', enabled: false }
+            ],
+            defaultChannels: ['acme-slack']
+          }),
+          { status: 200 }
+        )
       ])
       const client = await connectedClient(fetchImpl)
 
       const result = await client.callTool({ name: 'list_channels', arguments: {} })
 
       expect(result.isError).toBeFalsy()
-      expect(firstText(result)).toContain('ntfy, telegram')
-      expect(firstText(result)).toContain('Default channels for this token: ntfy')
+      const text = firstText(result)
+      // Each instance rendered with its id, type and enabled state.
+      expect(text).toContain('Acme Slack (acme-slack) [slack] enabled')
+      expect(text).toContain('Globex Slack (globex-slack) [slack] disabled')
+      expect(text).toContain('Default channels for this token: acme-slack')
 
       expect(calls).toHaveLength(1)
       expect(calls[0].url).toBe(`${NOTIFY_URL}/channels`)

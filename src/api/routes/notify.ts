@@ -13,8 +13,8 @@ import { buildNotifySchema } from '../schemas/notify-schema.js'
 import type { ServerDeps } from '../server.js'
 
 export function registerNotifyRoute(app: FastifyInstance, deps: ServerDeps): void {
-  const schema = buildNotifySchema(deps.activeChannelNames)
-  const authPreHandler = createAuthPreHandler(deps.tokenResolver)
+  const schema = buildNotifySchema()
+  const authPreHandler = createAuthPreHandler(deps.profileRepo)
 
   app.post('/notify', { preHandler: authPreHandler }, async (request, reply) => {
     const parsed = schema.safeParse(request.body)
@@ -30,6 +30,17 @@ export function registerNotifyRoute(app: FastifyInstance, deps: ServerDeps): voi
     }
 
     const body = parsed.data
+
+    // Fail early: every requested channel must be an EXISTING instance id.
+    // (Existence, not enablement -- a disabled instance is still a known id;
+    // the dispatcher decides enablement.) An unknown id 400s, naming it.
+    if (body.channels) {
+      for (const id of body.channels) {
+        if (!deps.channelRepo.get(id)) {
+          return reply.code(400).send({ error: `unknown channel "${id}"` })
+        }
+      }
+    }
     const notification: Notification = {
       title: body.title ?? 'Notification',
       message: body.message,
@@ -43,6 +54,7 @@ export function registerNotifyRoute(app: FastifyInstance, deps: ServerDeps): voi
 
     const dispatchJob: DispatchJob = {
       notification,
+      profileId: profile.id,
       profileName: profile.name,
       requestedChannels: body.channels,
       dedupKey

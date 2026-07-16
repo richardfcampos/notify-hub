@@ -1,78 +1,78 @@
 /**
  * Tests derive from spec NOTIF-01.3 + the edge cases ("message empty/
- * whitespace -> 400", "unknown channel -> 400") and T15's Done-when.
- * They assert the observable safeParse outcome (success flag + which field
- * failed), not schema internals. Active channels are fixed per-test.
+ * whitespace -> 400"). They assert the observable safeParse outcome (success
+ * flag + which field failed), not schema internals. The schema now validates
+ * STRUCTURE only -- whether a `channels` entry is a known instance id is a
+ * repository lookup in the route (see server.e2e), so `channels` here just
+ * has to be an array of strings.
  */
 import { describe, expect, it } from 'vitest'
 import { buildNotifySchema } from './notify-schema.js'
 
-const active = ['ntfy', 'telegram', 'discord']
-
 describe('buildNotifySchema', () => {
   it('accepts a minimal valid body (message only)', () => {
-    const result = buildNotifySchema(active).safeParse({ message: 'hello' })
+    const result = buildNotifySchema().safeParse({ message: 'hello' })
     expect(result.success).toBe(true)
   })
 
   it('accepts a fully-specified valid body', () => {
-    const result = buildNotifySchema(active).safeParse({
+    const result = buildNotifySchema().safeParse({
       title: 'Build',
       message: 'passed',
       priority: 'high',
       tags: ['ci', 'green'],
-      channels: ['ntfy', 'discord'],
+      channels: ['acme-slack', 'globex-discord'],
       metadata: { project: 'notify-hub', dedupKey: 'abc' }
     })
     expect(result.success).toBe(true)
     if (result.success) {
       expect(result.data.message).toBe('passed')
-      expect(result.data.channels).toEqual(['ntfy', 'discord'])
+      expect(result.data.channels).toEqual(['acme-slack', 'globex-discord'])
     }
   })
 
   it('rejects a missing message', () => {
-    const result = buildNotifySchema(active).safeParse({ title: 'x' })
+    const result = buildNotifySchema().safeParse({ title: 'x' })
     expect(result.success).toBe(false)
   })
 
   it('rejects an empty message', () => {
-    const result = buildNotifySchema(active).safeParse({ message: '' })
+    const result = buildNotifySchema().safeParse({ message: '' })
     expect(result.success).toBe(false)
   })
 
   it('rejects a whitespace-only message', () => {
-    const result = buildNotifySchema(active).safeParse({ message: '   ' })
+    const result = buildNotifySchema().safeParse({ message: '   ' })
     expect(result.success).toBe(false)
   })
 
-  it('rejects a channels entry not in the active set, naming the channel', () => {
-    const result = buildNotifySchema(active).safeParse({
+  it('rejects a channels entry that is not a string (shape check)', () => {
+    const result = buildNotifySchema().safeParse({
       message: 'hi',
-      channels: ['ntfy', 'bogus']
+      channels: ['acme-slack', 123]
     })
     expect(result.success).toBe(false)
     if (!result.success) {
       const issue = result.error.issues.find((i) => i.path[0] === 'channels')
-      expect(issue?.message).toContain('bogus')
+      expect(issue).toBeDefined()
     }
   })
 
-  it('accepts a valid subset of active channels', () => {
-    const result = buildNotifySchema(active).safeParse({
+  it('accepts any array-of-strings channels (id validity is checked in the route, not here)', () => {
+    const result = buildNotifySchema().safeParse({
       message: 'hi',
-      channels: ['telegram']
+      channels: ['anything-goes-at-schema-level']
     })
     expect(result.success).toBe(true)
   })
 
   it('rejects a non-string message (wrong type)', () => {
-    const result = buildNotifySchema(active).safeParse({ message: 123 })
+    const result = buildNotifySchema().safeParse({ message: 123 })
     expect(result.success).toBe(false)
   })
 
   it('rejects an invalid priority value', () => {
-    const result = buildNotifySchema(active).safeParse({
+    const result = buildNotifySchema().safeParse({
       message: 'hi',
       priority: 'critical'
     })
@@ -80,7 +80,7 @@ describe('buildNotifySchema', () => {
   })
 
   it('rejects tags that are not an array of strings', () => {
-    const result = buildNotifySchema(active).safeParse({
+    const result = buildNotifySchema().safeParse({
       message: 'hi',
       tags: [1, 2]
     })

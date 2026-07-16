@@ -1,26 +1,43 @@
 /**
  * End-to-end route tests via Fastify `app.inject` (no listener, no Redis).
  * Derived from spec NOTIF-01 (202/400/401/503), NOTIF-14 (health 200 +
- * redis indicator) and the edge cases (empty message -> 400, unknown
- * channel -> 400). Assertions are on response status + body values, plus
- * the actual DispatchJob captured from the InMemoryQueue -- not on whether
- * a handler merely ran.
+ * redis indicator) and DBCH-07 (token->profile from DB, /notify + /channels
+ * by instance id). Auth + channel data come from in-memory repository fakes.
+ * Assertions are on response status + body values, plus the actual
+ * DispatchJob captured from the InMemoryQueue -- not on whether a handler
+ * merely ran.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { createTokenResolver } from '../auth/token-resolver.js'
-import type { DispatchJob } from '../core/types.js'
+import type { ChannelInstance, DispatchJob, ProfileRecord } from '../core/types.js'
 import type { QueuePort } from '../core/ports.js'
-import { FakeLogger } from '../../test/helpers/fakes.js'
+import {
+  FakeChannelRepository,
+  FakeLogger,
+  FakeProfileRepository
+} from '../../test/helpers/fakes.js'
 import { InMemoryQueue } from '../queue/in-memory-queue.js'
 import { buildServer, type ServerDeps } from './server.js'
 
 const TOKEN = 'tok-phone'
-const profile = {
+const profile: ProfileRecord = {
+  id: 'phone',
   name: 'phone',
   token: TOKEN,
   defaultChannels: ['ntfy', 'telegram']
 }
+
+const instance = (
+  id: string,
+  type: string,
+  enabled = true,
+  label = id
+): ChannelInstance => ({ id, label, type, enabled, config: {} })
+
+const defaultInstances: ChannelInstance[] = [
+  instance('ntfy', 'ntfy'),
+  instance('telegram', 'telegram')
+]
 
 function makeApp(overrides: Partial<ServerDeps> = {}): {
   app: FastifyInstance
@@ -34,8 +51,8 @@ function makeApp(overrides: Partial<ServerDeps> = {}): {
   })
   const deps: ServerDeps = {
     queue,
-    tokenResolver: createTokenResolver([profile]),
-    activeChannelNames: ['ntfy', 'telegram'],
+    profileRepo: new FakeProfileRepository([profile]),
+    channelRepo: new FakeChannelRepository(defaultInstances),
     logger: new FakeLogger(),
     ...overrides
   }
@@ -52,7 +69,7 @@ afterEach(async () => {
 })
 
 describe('POST /notify', () => {
-  it('returns 202 + jobId and enqueues a DispatchJob with the right notification + profile', async () => {
+  it('returns 202 + jobId and enqueues a DispatchJob with the right notification + profile id', async () => {
     const { app, dispatched } = makeApp()
     current = app
 
@@ -69,6 +86,7 @@ describe('POST /notify', () => {
     expect(body.jobId.length).toBeGreaterThan(0)
 
     expect(dispatched).toHaveLength(1)
+    expect(dispatched[0].profileId).toBe('phone')
     expect(dispatched[0].profileName).toBe('phone')
     expect(dispatched[0].notification.title).toBe('Build')
     expect(dispatched[0].notification.message).toBe('passed')
@@ -134,7 +152,7 @@ describe('POST /notify', () => {
     expect(dispatched).toHaveLength(0)
   })
 
-  it('returns 400 when channels contains an unknown channel', async () => {
+  it('returns 400 naming the unknown instance id when channels references a non-existent instance', async () => {
     const { app, dispatched } = makeApp()
     current = app
 
@@ -148,6 +166,23 @@ describe('POST /notify', () => {
     expect(res.statusCode).toBe(400)
     expect(res.json().error).toContain('bogus')
     expect(dispatched).toHaveLength(0)
+  })
+
+  it('accepts (202) a request targeting an EXISTING-but-disabled instance; enablement is the dispatcher’s call', async () => {
+    const { app, dispatched } = makeApp({
+      channelRepo: new FakeChannelRepository([instance('acme-slack', 'slack', false)])
+    })
+    current = app
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/notify',
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: { message: 'hi', channels: ['acme-slack'] }
+    })
+
+    expect(res.statusCode).toBe(202)
+    expect(dispatched[0].requestedChannels).toEqual(['acme-slack'])
   })
 
   it('returns 503 when enqueueDispatch throws (queue/Redis down)', async () => {
@@ -206,13 +241,21 @@ describe('GET /health', () => {
 })
 
 describe('GET /channels', () => {
-  it('returns 200 with the active channels and the token profile defaults', async () => {
-    // activeChannelNames deliberately differs from the profile's defaultChannels
-    // so the assertion can't pass by accident if the two fields were swapped.
-    const narrowProfile = { name: 'phone', token: TOKEN, defaultChannels: ['ntfy'] }
+  it('returns 200 with the channel instances (id/label/type/enabled) and the token profile defaults', async () => {
+    // Instances deliberately differ from the profile's defaultChannels so the
+    // assertion can't pass by accident if the two fields were swapped.
+    const narrowProfile: ProfileRecord = {
+      id: 'phone',
+      name: 'phone',
+      token: TOKEN,
+      defaultChannels: ['acme-slack']
+    }
     const { app } = makeApp({
-      tokenResolver: createTokenResolver([narrowProfile]),
-      activeChannelNames: ['ntfy', 'telegram', 'email']
+      profileRepo: new FakeProfileRepository([narrowProfile]),
+      channelRepo: new FakeChannelRepository([
+        instance('acme-slack', 'slack', true, 'Acme Slack'),
+        instance('globex-slack', 'slack', false, 'Globex Slack')
+      ])
     })
     current = app
 
@@ -224,8 +267,11 @@ describe('GET /channels', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({
-      channels: ['ntfy', 'telegram', 'email'],
-      defaultChannels: ['ntfy']
+      channels: [
+        { id: 'acme-slack', label: 'Acme Slack', type: 'slack', enabled: true },
+        { id: 'globex-slack', label: 'Globex Slack', type: 'slack', enabled: false }
+      ],
+      defaultChannels: ['acme-slack']
     })
   })
 
