@@ -1,39 +1,58 @@
 /**
- * Talks to the running gateway (ADMIN-05, ADMIN-06) over the injected
+ * Talks to the running gateway (DBCH-08/09, tasks.md D9) over the injected
  * HttpClient port -- never a direct fetch call, so tests substitute
- * FakeHttpClient. `buildGatewayContext` derives the base URL from the
- * admin config's `extraKeys.PORT` (defaulting to 8080, the gateway's own
- * default) and picks the first profile's token, matching the spec
- * assumption "test-send uses the first profile's token". `baseUrlOverride`
- * (ADMIN-08.4, wired from `NOTIFY_GATEWAY_URL`) takes precedence -- used in
- * compose mode where the gateway lives at `http://api:<port>` instead of
- * localhost.
+ * FakeHttpClient. `buildGatewayContext` no longer derives anything from a
+ * parsed `.env` model (that model is gone): the base URL defaults to
+ * `http://localhost:8080` (the gateway's own default port) unless
+ * `baseUrlOverride` is given (wired from `NOTIFY_GATEWAY_URL` in compose
+ * mode, where the gateway lives at `http://api:<port>` instead of
+ * localhost); the token is whatever the caller resolved (the spec's "first
+ * profile's token", read live from ProfileRepository).
  */
 import type { HttpClient } from '../core/ports.js'
-import type { AdminConfig } from './admin-config.js'
 
 export interface GatewayContext {
   baseUrl: string
   token?: string
 }
 
-export function buildGatewayContext(cfg: AdminConfig, baseUrlOverride?: string): GatewayContext {
-  const port = cfg.extraKeys.PORT?.trim() || '8080'
+const DEFAULT_GATEWAY_BASE_URL = 'http://localhost:8080'
+
+export function buildGatewayContext(token: string | undefined, baseUrlOverride?: string): GatewayContext {
   return {
-    baseUrl: baseUrlOverride?.trim() || `http://localhost:${port}`,
-    token: cfg.profiles[0]?.token
+    baseUrl: baseUrlOverride?.trim() || DEFAULT_GATEWAY_BASE_URL,
+    token
   }
+}
+
+/** One named channel instance as reported by the gateway's `GET /channels` (spec DBCH-07). */
+export interface GatewayChannelSummary {
+  id: string
+  label: string
+  type: string
+  enabled: boolean
 }
 
 export interface GatewayStatus {
   up: boolean
   redis?: boolean
-  channels: string[]
+  channels: GatewayChannelSummary[]
   defaultChannels: string[]
 }
 
 function authHeaders(token?: string): Record<string, string> | undefined {
   return token ? { authorization: `Bearer ${token}` } : undefined
+}
+
+function isGatewayChannelSummary(value: unknown): value is GatewayChannelSummary {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).id === 'string' &&
+    typeof (value as Record<string, unknown>).label === 'string' &&
+    typeof (value as Record<string, unknown>).type === 'string' &&
+    typeof (value as Record<string, unknown>).enabled === 'boolean'
+  )
 }
 
 /**
@@ -66,15 +85,15 @@ export async function fetchGatewayStatus(
     }
   }
 
-  let channels: string[] = []
+  let channels: GatewayChannelSummary[] = []
   let defaultChannels: string[] = []
   if (channelsResult.status === 'fulfilled' && channelsResult.value.status === 200) {
     try {
       const parsed: unknown = JSON.parse(channelsResult.value.body)
       if (typeof parsed === 'object' && parsed !== null) {
         const obj = parsed as { channels?: unknown; defaultChannels?: unknown }
-        channels = Array.isArray(obj.channels) ? obj.channels : []
-        defaultChannels = Array.isArray(obj.defaultChannels) ? obj.defaultChannels : []
+        channels = Array.isArray(obj.channels) ? obj.channels.filter(isGatewayChannelSummary) : []
+        defaultChannels = Array.isArray(obj.defaultChannels) ? obj.defaultChannels.filter((c) => typeof c === 'string') : []
       }
     } catch {
       // Channels endpoint reachable but body unparseable; arrays stay empty.
@@ -90,11 +109,11 @@ export interface NotifyOutcome {
   errorMessage?: string
 }
 
-/** POSTs a test notification targeting exactly one channel (ADMIN-05.1). Network failure -> `{ok:false, errorMessage}` instead of throwing, so the route never hangs (ADMIN-05.3). */
+/** POSTs a test notification targeting exactly one channel INSTANCE id (ADMIN-05.1). Network failure -> `{ok:false, errorMessage}` instead of throwing, so the route never hangs (ADMIN-05.3). */
 export async function sendTestNotification(
   http: HttpClient,
   { baseUrl, token }: GatewayContext,
-  channel: string
+  channelId: string
 ): Promise<NotifyOutcome> {
   try {
     const res = await http.request({
@@ -104,7 +123,7 @@ export async function sendTestNotification(
       body: {
         title: 'notify-hub admin',
         message: 'Test from the admin panel',
-        channels: [channel]
+        channels: [channelId]
       }
     })
     if (res.status < 200 || res.status >= 300) {

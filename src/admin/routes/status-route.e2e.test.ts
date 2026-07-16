@@ -1,19 +1,14 @@
 /**
- * e2e via `app.inject` with FakeHttpClient + FakeCommandRunner (ADMIN-06).
- * Derived from spec P1 "System status" AC1/AC2: health + channels + recent
- * worker deliveries in one response; gateway-down degrades cleanly instead
- * of breaking the rest of the panel.
+ * e2e via `app.inject` with FakeHttpClient + FakeCommandRunner + a seeded
+ * FakeProfileRepository (ADMIN-06, rewired to DBCH-07's `/channels` shape).
+ * Derived from spec P1 "System status" AC1/AC2: health + instance channels +
+ * recent worker deliveries in one response; gateway-down degrades cleanly
+ * instead of breaking the rest of the panel.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { FakeCommandRunner, FakeFileStore, FakeHttpClient } from '../../../test/helpers/fakes.js'
-import type { ChannelSchema } from '../admin-config.js'
+import { FakeChannelRepository, FakeCommandRunner, FakeHttpClient, FakeProfileRepository } from '../../../test/helpers/fakes.js'
 import { buildAdminServer, type AdminServerDeps } from '../admin-server.js'
-
-const registry: Record<string, ChannelSchema> = { ntfy: { requiredConfig: ['NTFY_URL', 'NTFY_TOPIC'] } }
-const ENV = ['CHANNELS_ENABLED=ntfy', 'TOKENS=phone:tok-phone:ntfy', 'NTFY_URL=https://ntfy.sh', 'NTFY_TOPIC=t'].join(
-  '\n'
-)
 
 let current: FastifyInstance | null = null
 
@@ -32,8 +27,10 @@ function makeApp(overrides: Partial<AdminServerDeps> = {}): {
   const http = (overrides.http as FakeHttpClient) ?? new FakeHttpClient()
   const commandRunner = (overrides.commandRunner as FakeCommandRunner) ?? new FakeCommandRunner()
   const deps: AdminServerDeps = {
-    fileStore: new FakeFileStore(ENV),
-    registry,
+    channelRepo: new FakeChannelRepository(),
+    profileRepo: new FakeProfileRepository([
+      { id: 'phone', name: 'phone', token: 'tok-phone', defaultChannels: ['acme-ntfy'] }
+    ]),
     http,
     commandRunner,
     ...overrides
@@ -42,14 +39,20 @@ function makeApp(overrides: Partial<AdminServerDeps> = {}): {
 }
 
 describe('GET /api/status', () => {
-  it('returns gateway up + channels + parsed recent deliveries', async () => {
+  it('returns gateway up + the new instance-shaped channels + parsed recent deliveries', async () => {
     const { app, http, commandRunner } = makeApp()
     current = app
     http.queueResponse({ status: 200, body: JSON.stringify({ status: 'ok', redis: true }) })
-    http.queueResponse({ status: 200, body: JSON.stringify({ channels: ['ntfy'], defaultChannels: ['ntfy'] }) })
+    http.queueResponse({
+      status: 200,
+      body: JSON.stringify({
+        channels: [{ id: 'acme-ntfy', label: 'Acme Ntfy', type: 'ntfy', enabled: true }],
+        defaultChannels: ['acme-ntfy']
+      })
+    })
     commandRunner.queueResult({
       code: 0,
-      stdout: `worker-1 | ${JSON.stringify({ time: 1700000000000, channel: 'ntfy', msg: 'notification sent' })}`,
+      stdout: `worker-1 | ${JSON.stringify({ time: 1700000000000, channel: 'acme-ntfy', msg: 'notification sent' })}`,
       stderr: ''
     })
 
@@ -58,10 +61,21 @@ describe('GET /api/status', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({
       gateway: { up: true, redis: true },
-      channels: ['ntfy'],
-      defaultChannels: ['ntfy'],
-      recentDeliveries: [{ channel: 'ntfy', ok: true, time: new Date(1700000000000).toISOString() }]
+      channels: [{ id: 'acme-ntfy', label: 'Acme Ntfy', type: 'ntfy', enabled: true }],
+      defaultChannels: ['acme-ntfy'],
+      recentDeliveries: [{ channel: 'acme-ntfy', ok: true, time: new Date(1700000000000).toISOString() }]
     })
+  })
+
+  it('uses the first profile token from ProfileRepository for the /channels auth header', async () => {
+    const { app, http } = makeApp()
+    current = app
+    http.queueResponse({ status: 200, body: JSON.stringify({ status: 'ok' }) })
+    http.queueResponse({ status: 200, body: JSON.stringify({ channels: [], defaultChannels: [] }) })
+
+    await app.inject({ method: 'GET', url: '/api/status' })
+
+    expect(http.calls[1]?.headers).toEqual({ authorization: 'Bearer tok-phone' })
   })
 
   it('runs the worker-log tail from the injected composeDir instead of the bare process cwd (ADMIN-08.3)', async () => {
@@ -85,9 +99,9 @@ describe('GET /api/status', () => {
       code: 0,
       stdout: `worker-1 | ${JSON.stringify({
         time: 1,
-        channel: 'slack',
+        channel: 'acme-slack',
         error: 'bad url',
-        msg: 'delivery failed for channel "slack"'
+        msg: 'delivery failed for channel "acme-slack"'
       })}`,
       stderr: ''
     })
@@ -99,7 +113,17 @@ describe('GET /api/status', () => {
       gateway: { up: false },
       channels: [],
       defaultChannels: [],
-      recentDeliveries: [{ channel: 'slack', ok: false, error: 'bad url', time: new Date(1).toISOString() }]
+      recentDeliveries: [{ channel: 'acme-slack', ok: false, error: 'bad url', time: new Date(1).toISOString() }]
     })
+  })
+
+  it('degrades to gateway down (no http/commandRunner configured) instead of throwing', async () => {
+    const { app } = makeApp({ http: undefined, commandRunner: undefined })
+    current = app
+
+    const res = await app.inject({ method: 'GET', url: '/api/status' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ gateway: { up: false }, channels: [], defaultChannels: [], recentDeliveries: [] })
   })
 })

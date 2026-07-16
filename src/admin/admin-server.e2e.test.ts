@@ -1,33 +1,25 @@
 /**
- * e2e via Fastify `app.inject` (no listener) with an in-memory FakeFileStore
- * (ADMIN-01, ADMIN-02, ADMIN-03). Derived from spec ACs: GET reflects the
- * seeded `.env`; PUT rejects an enabled-channel-missing-key body and a
- * profile-default-channel-not-enabled body (both named, nothing written);
- * PUT valid backs up then writes a round-trippable `.env`. A separate
- * describe block starts a real listener on an ephemeral port to assert the
- * 127.0.0.1-only binding (ADMIN-01 security AC).
+ * e2e via Fastify `app.inject` (config CRUD assertions live in
+ * routes/config-routes.e2e.test.ts). This file covers what buildAdminServer
+ * itself is responsible for: serving the static UI directory (or not, when
+ * uiDir is omitted) and the loopback-only host binding invariant
+ * (ADMIN-01 security AC) via a real listener on an ephemeral port.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { FakeFileStore } from '../../test/helpers/fakes.js'
-import type { AdminConfig, ChannelSchema } from './admin-config.js'
+import { FakeChannelRepository, FakeProfileRepository } from '../../test/helpers/fakes.js'
 import { buildAdminServer, startAdminServer, type AdminServerDeps } from './admin-server.js'
 
-const registry: Record<string, ChannelSchema> = {
-  ntfy: { requiredConfig: ['NTFY_URL', 'NTFY_TOPIC'] },
-  slack: { requiredConfig: ['SLACK_WEBHOOK_URL'] }
-}
-
-function makeApp(overrides: Partial<AdminServerDeps> = {}): {
-  app: FastifyInstance
-  fileStore: FakeFileStore
-} {
-  const fileStore = overrides.fileStore instanceof FakeFileStore ? overrides.fileStore : new FakeFileStore()
-  const deps: AdminServerDeps = { fileStore, registry, ...overrides }
-  return { app: buildAdminServer(deps), fileStore }
+function makeApp(overrides: Partial<AdminServerDeps> = {}): { app: FastifyInstance } {
+  const deps: AdminServerDeps = {
+    channelRepo: new FakeChannelRepository(),
+    profileRepo: new FakeProfileRepository(),
+    ...overrides
+  }
+  return { app: buildAdminServer(deps) }
 }
 
 let current: FastifyInstance | null = null
@@ -37,112 +29,6 @@ afterEach(async () => {
     await current.close()
     current = null
   }
-})
-
-describe('GET /api/config', () => {
-  it('reflects the seeded .env content', async () => {
-    const fileStore = new FakeFileStore(
-      ['CHANNELS_ENABLED=ntfy', 'NTFY_URL=https://ntfy.sh', 'NTFY_TOPIC=mytopic', 'TOKENS=phone:tok:ntfy'].join('\n')
-    )
-    const { app } = makeApp({ fileStore })
-    current = app
-
-    const res = await app.inject({ method: 'GET', url: '/api/config' })
-
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({
-      channels: {
-        ntfy: { enabled: true, values: { NTFY_URL: 'https://ntfy.sh', NTFY_TOPIC: 'mytopic' } },
-        slack: { enabled: false, values: { SLACK_WEBHOOK_URL: '' } }
-      },
-      profiles: [{ name: 'phone', token: 'tok', defaultChannels: ['ntfy'] }],
-      extraKeys: {}
-    })
-  })
-
-  it('returns the empty model when no .env exists yet', async () => {
-    const { app } = makeApp()
-    current = app
-
-    const res = await app.inject({ method: 'GET', url: '/api/config' })
-
-    expect(res.statusCode).toBe(200)
-    expect(res.json().channels.ntfy).toEqual({ enabled: false, values: { NTFY_URL: '', NTFY_TOPIC: '' } })
-  })
-})
-
-describe('PUT /api/config', () => {
-  function validConfig(): AdminConfig {
-    return {
-      channels: {
-        ntfy: { enabled: true, values: { NTFY_URL: 'https://ntfy.sh', NTFY_TOPIC: 'mytopic' } },
-        slack: { enabled: false, values: { SLACK_WEBHOOK_URL: '' } }
-      },
-      profiles: [{ name: 'phone', token: 'tok', defaultChannels: ['ntfy'] }],
-      extraKeys: { PORT: '8080' }
-    }
-  }
-
-  it('rejects an enabled channel missing a required key, naming channel + key, and writes nothing', async () => {
-    const { app, fileStore } = makeApp()
-    current = app
-    const before = fileStore.content
-
-    const cfg = validConfig()
-    cfg.channels.slack = { enabled: true, values: { SLACK_WEBHOOK_URL: '' } }
-
-    const res = await app.inject({ method: 'PUT', url: '/api/config', payload: cfg })
-
-    expect(res.statusCode).toBe(400)
-    expect(res.json().error).toBe('Channel "slack" is enabled but missing required config "SLACK_WEBHOOK_URL"')
-    expect(fileStore.content).toBe(before)
-    expect(fileStore.backups).toHaveLength(0)
-  })
-
-  it('rejects a profile default channel that is not enabled, naming it, and writes nothing', async () => {
-    const { app, fileStore } = makeApp()
-    current = app
-    const before = fileStore.content
-
-    const cfg = validConfig()
-    cfg.profiles = [{ name: 'phone', token: 'tok', defaultChannels: ['ntfy', 'slack'] }]
-
-    const res = await app.inject({ method: 'PUT', url: '/api/config', payload: cfg })
-
-    expect(res.statusCode).toBe(400)
-    expect(res.json().error).toBe('Profile "phone" has default channel "slack" which is not enabled')
-    expect(fileStore.content).toBe(before)
-    expect(fileStore.backups).toHaveLength(0)
-  })
-
-  it('rejects a malformed body (400) and writes nothing', async () => {
-    const { app, fileStore } = makeApp()
-    current = app
-
-    const res = await app.inject({ method: 'PUT', url: '/api/config', payload: { nonsense: true } })
-
-    expect(res.statusCode).toBe(400)
-    expect(fileStore.content).toBeNull()
-  })
-
-  it('backs up then writes a round-trippable .env on a valid body', async () => {
-    const fileStore = new FakeFileStore('CHANNELS_ENABLED=\nTOKENS=\n')
-    const { app } = makeApp({ fileStore })
-    current = app
-
-    const cfg = validConfig()
-    const res = await app.inject({ method: 'PUT', url: '/api/config', payload: cfg })
-
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-    expect(body.ok).toBe(true)
-    expect(fileStore.backups).toEqual(['fake-backup-1'])
-    expect(body.backupPath).toBe('fake-backup-1')
-
-    // The freshly written content parses back to the exact config that was saved.
-    const getRes = await app.inject({ method: 'GET', url: '/api/config' })
-    expect(getRes.json()).toEqual(cfg)
-  })
 })
 
 describe('static UI serving', () => {
@@ -199,10 +85,12 @@ describe('static UI serving', () => {
 
 describe('startAdminServer binding', () => {
   it('defaults to host 127.0.0.1 (never 0.0.0.0) when no host option is given -- the invariant for host mode', async () => {
-    const fileStore = new FakeFileStore()
     // Port 0 lets the OS pick a free ephemeral port so this test never
     // collides with anything already listening on 8081.
-    const app = await startAdminServer({ fileStore, registry }, { port: 0 })
+    const app = await startAdminServer(
+      { channelRepo: new FakeChannelRepository(), profileRepo: new FakeProfileRepository() },
+      { port: 0 }
+    )
     current = app
 
     const address = app.server.address()
@@ -211,8 +99,10 @@ describe('startAdminServer binding', () => {
   })
 
   it('honors an explicit host option (ADMIN-01.2: container mode passes ADMIN_HOST=0.0.0.0)', async () => {
-    const fileStore = new FakeFileStore()
-    const app = await startAdminServer({ fileStore, registry }, { port: 0, host: '0.0.0.0' })
+    const app = await startAdminServer(
+      { channelRepo: new FakeChannelRepository(), profileRepo: new FakeProfileRepository() },
+      { port: 0, host: '0.0.0.0' }
+    )
     current = app
 
     const address = app.server.address()

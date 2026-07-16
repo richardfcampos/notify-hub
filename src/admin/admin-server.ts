@@ -1,9 +1,9 @@
 /**
- * Admin panel Fastify app factory (ADMIN-01, revised by spec Amendment 1).
- * All external seams (FileStore, channel registry, CommandRunner,
- * HttpClient, static UI dir) are injected via AdminServerDeps so tests
- * drive the whole API with `app.inject` over fakes -- no real file, no
- * Docker, no network.
+ * Admin panel Fastify app factory (ADMIN-01, revised by DBCH-08/09: DB-backed
+ * config, no apply step). All external seams (channel/profile repositories,
+ * CommandRunner, HttpClient, static UI dir) are injected via AdminServerDeps
+ * so tests drive the whole API with `app.inject` over fakes -- no real
+ * SQLite file, no Docker, no network.
  *
  * `startAdminServer` is the only place a host/port is chosen. The host
  * defaults to 127.0.0.1 (loopback-only, matching the security assumption
@@ -15,7 +15,6 @@
  * src/admin/compose-invariants.test.ts).
  */
 import Fastify, { type FastifyInstance } from 'fastify'
-import { registerApplyRoute } from './routes/apply-route.js'
 import { registerConfigRoutes } from './routes/config-routes.js'
 import { registerStatusRoute } from './routes/status-route.js'
 import { registerTestSendRoute } from './routes/test-send-route.js'
@@ -28,7 +27,6 @@ export function buildAdminServer(deps: AdminServerDeps): FastifyInstance {
   const app = Fastify({ logger: false })
 
   registerConfigRoutes(app, deps)
-  registerApplyRoute(app, deps)
   registerStatusRoute(app, deps)
   registerTestSendRoute(app, deps)
 

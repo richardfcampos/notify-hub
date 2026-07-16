@@ -1,38 +1,41 @@
 /**
- * Shared dependency shape for buildAdminServer (ADMIN-01..06, ADMIN-08).
+ * Shared dependency shape for buildAdminServer (DBCH-08, tasks.md D9).
+ * Config CRUD is DB-backed directly through the repositories -- no
+ * FileStore, no channel-schema registry injection, no CommandRunner-driven
+ * `docker compose apply` step (hot-reload means a save takes effect
+ * immediately, spec AD-018). CommandRunner survives ONLY as the seam for
+ * tailing worker delivery logs (status + test-send outcome polling).
+ *
  * Kept in its own module so every route file depends on one small
  * interface instead of importing admin-server.ts (which would create a
  * cycle once routes are registered from there).
  */
-import type { HttpClient } from '../core/ports.js'
-import type { ChannelSchema } from './admin-config.js'
+import type { ChannelRepository, HttpClient, ProfileRepository } from '../core/ports.js'
 import type { CommandRunner } from './command-runner.js'
-import type { FileStore } from './env-file-store.js'
 
 export interface AdminServerDeps {
-  fileStore: FileStore
-  registry: Record<string, ChannelSchema>
-  /** Required for /api/apply, /api/status (delivery tail) and /api/test-send's outcome poll. */
-  commandRunner?: CommandRunner
+  /** Named channel instances, read/written live -- panel edits hot-reload with no restart. */
+  channelRepo: ChannelRepository
+  /** Token profiles + their default channel ids. */
+  profileRepo: ProfileRepository
   /** Required for /api/status (gateway health/channels) and /api/test-send. */
   http?: HttpClient
+  /** Worker-log tailing ONLY (recent-deliveries tail + test-send outcome poll) -- config CRUD never shells out. */
+  commandRunner?: CommandRunner
   uiDir?: string
   /**
-   * Working directory for `docker compose` invocations (apply, worker-log
-   * tail). Explicit dependency instead of a bare `process.cwd()` read
-   * inside each route -- `src/bin/admin.ts` wires it from `COMPOSE_DIR`
-   * (ADMIN-08.3). Falls back to `process.cwd()` at the call site when
-   * omitted (e.g. in tests that don't care about cwd).
+   * Working directory for the worker-log-tail `docker compose` invocation.
+   * `src/bin/admin.ts` wires it from `COMPOSE_DIR`. Falls back to
+   * `process.cwd()` at the call site when omitted (tests that don't care).
    */
   composeDir?: string
   /**
-   * Overrides the gateway base URL normally derived from the config's
-   * `extraKeys.PORT` (`http://localhost:<port>`). `src/bin/admin.ts` wires
-   * it from `NOTIFY_GATEWAY_URL` so the containerized admin service can
-   * reach the gateway at `http://api:<port>` (ADMIN-08.4).
+   * Overrides the gateway base URL (default `http://localhost:8080`).
+   * `src/bin/admin.ts` wires it from `NOTIFY_GATEWAY_URL` so the
+   * containerized admin service can reach the gateway at `http://api:<port>`.
    */
   gatewayBaseUrl?: string
-  /** Test-send outcome poll tuning (ADMIN-05.2/.3). Defaults: 10 attempts x 1000ms (~10s total real). */
+  /** Test-send outcome poll tuning. Defaults: 10 attempts x 1000ms (~10s total real). */
   testSendPollAttempts?: number
   testSendPollIntervalMs?: number
   /** Injectable delay between poll attempts so tests run instantly instead of waiting real time. */

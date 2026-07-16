@@ -1,10 +1,12 @@
 /**
- * Admin panel entrypoint (ADMIN-01, ADMIN-04..06, ADMIN-08). Builds the
- * real dependencies (fs-backed FileStore, execFile CommandRunner for
- * `docker compose`, fetch-based HttpClient for the gateway) and starts the
- * Fastify server. All diagnostics go to stderr, never stdout, and no
- * secret value is ever logged (edge case: "no secret shall be logged by
- * the admin server").
+ * Admin panel entrypoint (ADMIN-01, ADMIN-04..06, ADMIN-08, rewired to
+ * DBCH-08 by tasks.md D9). Opens the SAME SQLite file the gateway/worker use
+ * (`DB_PATH`, WAL journaling lets multiple processes read/write safely) and
+ * builds real repositories over it -- no `.env` FileStore, no
+ * `docker compose apply` step: a save is live for the very next
+ * request/delivery (AD-018, hot-reload). All diagnostics go to stderr, never
+ * stdout, and no secret value is ever logged (edge case: "no secret shall be
+ * logged by the admin server").
  *
  * Host mode (`npm run admin`) vs. compose mode (the dockerized `admin`
  * service) differ only through env vars -- this file stays a thin,
@@ -12,14 +14,14 @@
  * - `ADMIN_HOST` (default `127.0.0.1`): compose sets `0.0.0.0` so the
  *   container accepts connections from the host's port mapping, which is
  *   itself pinned to 127.0.0.1 (ADMIN-01.2).
- * - `ENV_FILE_PATH` (default `<cwd>/.env`): compose sets `/config/.env`
- *   (the bind-mounted repo dir) so writes/backups land on the host.
- * - `COMPOSE_DIR` (default `<cwd>`): working directory for `docker compose`
- *   invocations (apply, worker-log tail); compose sets `/config`.
- * - `NOTIFY_GATEWAY_URL` (default: derived from `.env`'s PORT via
- *   gateway-client.ts, i.e. `http://localhost:<port>`): compose sets
- *   `http://api:<port>` so the containerized panel reaches the gateway
- *   over the compose network instead of localhost.
+ * - `DB_PATH` (default `./data/notify-hub.db`, matching config/load-config.ts):
+ *   the on-disk SQLite file shared with the api/worker processes.
+ * - `COMPOSE_DIR` (default `<cwd>`): working directory for the worker-log
+ *   tail `docker compose` invocation (status/test-send); compose sets
+ *   `/config`.
+ * - `NOTIFY_GATEWAY_URL` (default: `http://localhost:8080`): compose sets
+ *   `http://api:<port>` so the containerized panel reaches the gateway over
+ *   the compose network instead of localhost.
  *
  * Resolving the UI static dir is the one thing still anchored to this
  * file's own location (`import.meta.url`), since `dist/admin/ui` is
@@ -30,10 +32,11 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { channelRegistry } from '../channels/channel-registry.js'
 import { startAdminServer } from '../admin/admin-server.js'
 import { NodeCommandRunner } from '../admin/command-runner.js'
-import { NodeEnvFileStore } from '../admin/env-file-store.js'
+import { openDatabase } from '../db/database.js'
+import { SqliteChannelRepository } from '../db/sqlite-channel-repository.js'
+import { SqliteProfileRepository } from '../db/sqlite-profile-repository.js'
 import { FetchHttpClient } from '../http/fetch-http-client.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -48,7 +51,7 @@ function resolveUiDir(): string | undefined {
 
 async function main(): Promise<void> {
   const host = process.env.ADMIN_HOST ?? '127.0.0.1'
-  const envPath = process.env.ENV_FILE_PATH ?? join(process.cwd(), '.env')
+  const dbPath = process.env.DB_PATH ?? './data/notify-hub.db'
   const composeDir = process.env.COMPOSE_DIR ?? process.cwd()
   const gatewayBaseUrl = process.env.NOTIFY_GATEWAY_URL
   const uiDir = resolveUiDir()
@@ -57,10 +60,16 @@ async function main(): Promise<void> {
     console.error('admin: warning -- could not locate the admin UI static files; API routes will still work')
   }
 
+  // Same on-disk file the gateway/worker open; WAL journaling (set by
+  // openDatabase) is what makes concurrent multi-process access safe.
+  const db = openDatabase(dbPath)
+  const channelRepo = new SqliteChannelRepository(db)
+  const profileRepo = new SqliteProfileRepository(db)
+
   const app = await startAdminServer(
     {
-      fileStore: new NodeEnvFileStore(envPath),
-      registry: channelRegistry,
+      channelRepo,
+      profileRepo,
       commandRunner: new NodeCommandRunner(),
       http: new FetchHttpClient(),
       uiDir,
@@ -74,6 +83,7 @@ async function main(): Promise<void> {
     try {
       console.error(`admin: received ${signal}, shutting down`)
       await app.close()
+      db.close()
       process.exit(0)
     } catch (error) {
       console.error('admin: error during shutdown', error)
