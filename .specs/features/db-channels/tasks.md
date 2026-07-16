@@ -1,7 +1,7 @@
 # DB-backed Named Channel Instances — Tasks
 
 **Spec**: `.specs/features/db-channels/spec.md`
-**Status**: Phases 1-2 done; Phase 3 (admin) next. — 215 tests (Docker-backed full suite), build ok. See STATE.md CURRENT WORK.
+**Status**: Phases 1-3 done; Phase 4 (docker/docs/migration) next. — 248 tests (Docker-backed full suite), build ok. See STATE.md CURRENT WORK.
 **Design (inline)**: SQLite (`better-sqlite3`) behind repository ports (Ports & Adapters, like the rest). Registry keyed by TYPE; adapters built per-instance from DB config at delivery time (hot-reload). Admin panel edits the DB live (no compose-apply). `.env` keeps infra only. Auto-seed from legacy `.env` on empty DB.
 
 ## Test Coverage Matrix
@@ -71,15 +71,17 @@ Phase 4 (docker/docs):     D11
 **Commit**: `feat(core): wire gateway to sqlite repositories`
 **Note**: `loadConfig` added `DB_PATH` (default `./data/notify-hub.db`) and relaxed the channel fail-fast (missing-cred/unknown-type now parse as seed input, never throw). Deleted `channel-builder.ts`+`buildActive` (coverage → `build-instance.test.ts`) and `token-resolver.ts`/`TokenResolver` port (coverage → `ProfileRepository.resolveByToken` + auth e2e). Known limitation: email SMTP is a single shared transport from the seed's email config (per-instance SMTP deferred to admin rewrite); webhook-style channels hot-reload fully.
 
-### D9: Admin API CRUD on DB
+### D9: Admin API CRUD on DB ✅
 **What**: replace `.env` config routes with DB-backed: `GET /api/config` → {channels[], profiles[]}; `PUT /api/config` transactional upsert/delete with write-time validation (dup id, enabled-missing-cred → 400 naming it, profile ref must exist+enabled); `POST /api/test-send {channelId}`; DROP `/api/apply` + compose runner + `.env` file store for channels. Keep `.env` store only if still needed for infra (else remove).
 **Requirement**: DBCH-08 · **Tests**: e2e · **Gate**: full
 **Commit**: `feat(admin): db-backed config crud with write-time validation`
+**Note**: `AdminServerDeps` narrowed to `{channelRepo, profileRepo, http?, commandRunner?, uiDir?, composeDir?, gatewayBaseUrl?, testSendPollAttempts?, testSendPollIntervalMs?, delay?}` -- CommandRunner survives ONLY for worker-log tailing (status/test-send), never config writes. New `src/admin/config-validation.ts` (`validateConfigPayload`) enforces slug id, dup id, unknown type, enabled-missing-config, profile-ref-exists+enabled, dup token -- validate-all-then-write (repo ports have no cross-call transaction, so nothing is written until every check passes). PUT applies an upsert+delete diff against the current repo state. `gateway-client.ts` `buildGatewayContext` no longer takes an `.env`-derived model (token/baseUrl passed directly); `/channels` parsing updated to the instance-object shape. Deleted `admin-config.ts`/`admin-validation.ts`/`env-file-store.ts` + `apply-route.ts` and their tests (coverage replaced by `config-validation.test.ts` + `routes/config-routes.e2e.test.ts`). `src/bin/admin.ts` opens the shared SQLite DB (`openDatabase(DB_PATH)`) instead of an `.env` file.
 
-### D10: Admin UI for instances
+### D10: Admin UI for instances ✅
 **What**: rebuild channel section as instance list (label, id badge, type, enabled toggle, masked config + reveal, Send test, Delete) + "Add channel" (type picker → id + label → config fields for that type); profiles pick named instances (chips); remove the Save&Apply/restart step → single "Save" that's live; keep dirty-tracking. Extract validation/selection helpers as pure testable fns.
 **Requirement**: DBCH-09 · **Tests**: unit (helpers) + build · **Gate**: full
 **Commit**: `feat(admin): named-instance management ui`
+**Note**: added `GET /api/channel-types` (from `requiredConfigByChannel`) so the Add-channel picker never hardcodes the 7 types. Pure helpers (all `.test.js`): `admin-instance-id.js` (slugify/isValidChannelId, mirrors backend's slug regex), `admin-channel-completeness.js` (missing-required-key check for the inline warning), `admin-config-payload.js` (assembles the working state into the exact PUT body, trimming stray config keys), `admin-defaults.js` (prune-on-disable adapted to instance ids, now also prunes deleted instances). Profile chips list ALL instances (not just enabled) by label with id as `title` tooltip. **Fixed** `vitest.config.ts`: its `include` never matched `src/**/*.test.js`, so `admin-defaults.test.js` silently ran 0 assertions since Amendment 1 -- now included, and this phase's new `.test.js` files actually execute under `npm run test:unit`.
 
 ### D11: Docker volume + docs + migration + smoke
 **What**: compose named volume mounted at `/data` for the SQLite file; `DB_PATH` env; `.env.example` trimmed to infra + note channels live in DB now; README rewrite (DB config, hot-reload, multiple named channels per company, migration note); live smoke: recreate stack → existing setup migrated → add a 2nd slack instance → two profiles route to different slacks → change config, next send reflects it (no restart).
