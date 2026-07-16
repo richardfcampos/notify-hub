@@ -30,6 +30,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: .specs/features/mcp-server/validation.md (MCP priority enum no negative test) (schemas)
 - last seen: 2026-07-15T13:09:02Z
 
+### L-004 — Fallback/default-path tests must use fixtures where the expected outcome DIFFERS from the degenerate alternative (e.g. profile defaults must be a strict subset of enabled channels) — defaults==universe makes 'use defaults' and 'use everything' indistinguishable.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: db-channels
+- evidence: .specs/features/db-channels/validation.md (mutation b, dispatch fallback) (tests)
+- last seen: 2026-07-16T21:28:33Z
+
 ## Quarantined (failed when applied — ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

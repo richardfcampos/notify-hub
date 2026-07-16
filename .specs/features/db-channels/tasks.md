@@ -1,7 +1,7 @@
 # DB-backed Named Channel Instances — Tasks
 
 **Spec**: `.specs/features/db-channels/spec.md`
-**Status**: ALL PHASES DONE — pending Verifier. 248 tests (Docker-backed full suite), build ok. Live migration + smoke passed against the real stack (seed, hot-reload add/delete, default-channel send). See STATE.md CURRENT WORK.
+**Status**: Done — validated (Verifier FAIL iter 1 → test-only fix 06e703e → PASS iter 2). 251 tests.
 **Design (inline)**: SQLite (`better-sqlite3`) behind repository ports (Ports & Adapters, like the rest). Registry keyed by TYPE; adapters built per-instance from DB config at delivery time (hot-reload). Admin panel edits the DB live (no compose-apply). `.env` keeps infra only. Auto-seed from legacy `.env` on empty DB.
 
 ## Test Coverage Matrix

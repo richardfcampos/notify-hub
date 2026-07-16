@@ -31,7 +31,12 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 
 ## Handoff
 
-### ⏳ CURRENT WORK (interrupted by session limit 2026-07-16) — Feature 4: db-channels
+### ✅ Feature 4 — db-channels: COMPLETE & VALIDATED (2026-07-16)
+
+Named channel instances (N per type, id+label+own creds) + profiles routing to instance ids + SQLite config store + hot-reload (no restart) + auto-seed from legacy .env. Phases 1-4 done (commits 1f25250..9a313eb + test fix 06e703e). **251 tests.** Verifier: FAIL iter 1 (1 surviving mutant — dispatch fallback not discriminated from route-to-all; code was correct, missing regression guard) → test-only fix → **PASS iter 2** (all 6 sensor mutations killed). Live-migrated: user's real stack runs it; seed created 5 instances + profile richard (default ntfy); hot-reload proven live (add instance → send → delete, no restart). Lessons: L-004 candidate (fallback tests need fixtures where defaults ⊊ enabled). Deferred: per-instance SMTP transport (email uses shared transport from seed config).
+Ops done alongside: user default channel ntfy (live), Claude hook merged into ~/.claude/settings.json (inert until user exports NOTIFY_URL/NOTIFY_TOKEN — classifier correctly blocked writing the token; user does that step).
+
+### (stale header kept for history) — Feature 4 work log
 
 **WHAT & WHY:** User wants **multiple named channel instances per type** (e.g. several Slack/Discord, one per company), each with its own credentials, and each profile choosing which instances it routes to. Config moves from flat `.env` to **SQLite** (user said "um db"), with **hot-reload** (no restart on save) and each channel having a **name/id + separate label**. See `.specs/features/db-channels/{spec.md,tasks.md}`. Decisions recorded as **AD-016** (SQLite store, supersedes .env-config AD-005/006), **AD-017** (named instances, registry keyed by TYPE), **AD-018** (hot-reload, supersedes AD-013/014 Save&Apply + startup fail-fast).
 

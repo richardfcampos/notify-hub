@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 4,
+  "next_id": 5,
   "lessons": [
     {
       "id": "L-001",
@@ -60,6 +60,24 @@
       ],
       "created": "2026-07-15T13:09:02Z",
       "last_seen": "2026-07-15T13:09:02Z"
+    },
+    {
+      "id": "L-004",
+      "key": "surviving_mutant::fallback default path tests must use fixtures where the expected outcome differs from the degenerate alternative e g profile defaults must be a strict subset of enabled channels defaults universe makes use defaults and use everything indistinguishable",
+      "text": "Fallback/default-path tests must use fixtures where the expected outcome DIFFERS from the degenerate alternative (e.g. profile defaults must be a strict subset of enabled channels) — defaults==universe makes 'use defaults' and 'use everything' indistinguishable.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": [
+        "db-channels"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        ".specs/features/db-channels/validation.md (mutation b, dispatch fallback) (tests)"
+      ],
+      "created": "2026-07-16T21:28:33Z",
+      "last_seen": "2026-07-16T21:28:33Z"
     }
   ]
 }
