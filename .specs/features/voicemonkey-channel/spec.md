@@ -32,7 +32,7 @@ The official Alexa Proactive Events API cannot deliver arbitrary spoken text aut
 
 ### P1: Voice Monkey channel adapter ⭐ MVP
 **Acceptance Criteria**:
-1. WHEN a `voicemonkey` instance is enabled and configured with a valid token + device THEN sending a notification SHALL call Voice Monkey's Announcement endpoint with the notification's message as the spoken text.
+1. WHEN a `voicemonkey` instance is enabled and configured with a valid token + device THEN sending a notification SHALL call Voice Monkey's Announcement endpoint with the notification's title + message (`${title}. ${message}`) as the spoken text.
 2. WHEN Voice Monkey responds with an error (non-2xx, or a 2xx body indicating failure if their API does that) THEN the adapter SHALL throw (queue retry + per-instance isolation, unchanged from every other channel).
 3. WHEN the message exceeds Voice Monkey's documented length limit (if any) THEN it SHALL be truncated rather than erroring.
 4. The registry entry SHALL declare the exact required config keys the worker verifies against the real API.

@@ -1,7 +1,7 @@
 # Voice Monkey Channel — Tasks
 
 **Spec**: `.specs/features/voicemonkey-channel/spec.md`
-**Status**: Implementation complete, pending Verifier
+**Status**: Done — validated (Verifier PASS, iteration 1). 350 tests.
 **Scope**: Medium — new channel type, same shape as existing adapters (ntfy/CallMeBot). Design inline, tasks implicit.
 
 ## Execution Plan (Sequential)
