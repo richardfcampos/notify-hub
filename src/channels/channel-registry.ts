@@ -11,6 +11,7 @@ import { emailRegistryEntry } from './adapters/email-channel.js'
 import { ntfyRegistryEntry } from './adapters/ntfy-channel.js'
 import { slackRegistryEntry } from './adapters/slack-channel.js'
 import { telegramRegistryEntry } from './adapters/telegram-channel.js'
+import { voicemonkeyRegistryEntry } from './adapters/voicemonkey-channel.js'
 import { webhookRegistryEntry } from './adapters/webhook-channel.js'
 import { whatsappRegistryEntry } from './adapters/whatsapp-channel.js'
 
@@ -21,6 +22,7 @@ export const channelRegistry: Record<string, ChannelRegistryEntry> = {
   slack: slackRegistryEntry,
   discord: discordRegistryEntry,
   whatsapp: whatsappRegistryEntry,
+  voicemonkey: voicemonkeyRegistryEntry,
   webhook: webhookRegistryEntry
 }
 
