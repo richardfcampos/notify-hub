@@ -59,13 +59,13 @@ notify-hub's MCP surface is send-only (stdio: send_notification/list_channels/ch
 ## Requirement Traceability
 | ID | Story | Status |
 | -- | ----- | ------ |
-| MCPC-01 | get_config tool | Pending |
-| MCPC-02 | upsert/delete channel tools + validation | Pending |
-| MCPC-03 | upsert/delete profile tools + validation | Pending |
-| MCPC-04 | test_channel + get_status tools | Pending |
-| MCPC-05 | Streamable HTTP endpoint on admin (/mcp) | Pending |
-| MCPC-06 | Shared send toolset on the endpoint | Pending |
-| MCPC-07 | Registration docs (mcp-manager) | Pending |
+| MCPC-01 | get_config tool | Implemented |
+| MCPC-02 | upsert/delete channel tools + validation | Implemented |
+| MCPC-03 | upsert/delete profile tools + validation | Implemented |
+| MCPC-04 | test_channel + get_status tools | Implemented |
+| MCPC-05 | Streamable HTTP endpoint on admin (/mcp) | Implemented |
+| MCPC-06 | Shared send toolset on the endpoint | Implemented |
+| MCPC-07 | Registration docs (mcp-manager) | Implemented |
 
 ## Success Criteria
 - [ ] From a session connected to the mcp-manager gateway: `list_mcps` shows notify-hub → `get_mcp_tools` lists the config+send tools → `call_mcp_tool` creates a channel instance → it appears in the panel and delivers, no restart.
