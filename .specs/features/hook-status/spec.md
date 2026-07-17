@@ -85,4 +85,4 @@ User feedback (verbatim): "to sendo flodado de notificações, pq a cada coisa q
 
 | ID | Story | Status |
 | -- | ----- | ------ |
-| HOOK-06 | Idle-debounced end notification | Pending |
+| HOOK-06 | Idle-debounced end notification | Done |
