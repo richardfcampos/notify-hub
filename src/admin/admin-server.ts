@@ -17,6 +17,7 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import { registerChannelTypesRoute } from './routes/channel-types-route.js'
 import { registerConfigRoutes } from './routes/config-routes.js'
+import { registerMcpRoute } from './routes/mcp-route.js'
 import { registerStatusRoute } from './routes/status-route.js'
 import { registerTestSendRoute } from './routes/test-send-route.js'
 import { registerStaticUiRoutes } from './static-ui-files.js'
@@ -31,6 +32,7 @@ export function buildAdminServer(deps: AdminServerDeps): FastifyInstance {
   registerChannelTypesRoute(app, deps)
   registerStatusRoute(app, deps)
   registerTestSendRoute(app, deps)
+  registerMcpRoute(app, deps)
 
   // Registered last: Fastify's router (find-my-way) matches static paths
   // like /api/config ahead of a /* wildcard regardless of registration
