@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 5,
+  "next_id": 6,
   "lessons": [
     {
       "id": "L-001",
@@ -78,6 +78,24 @@
       ],
       "created": "2026-07-16T21:28:33Z",
       "last_seen": "2026-07-16T21:28:33Z"
+    },
+    {
+      "id": "L-005",
+      "key": "spec_precision_gap::cli entry guards comparing import meta url to argv 1 must use pathtofileurl spaced paths break string concat and be covered by a spawn test using a path containing a space",
+      "text": "CLI entry guards comparing import.meta.url to argv[1] must use pathToFileURL (spaced paths break string concat) and be covered by a spawn test using a path containing a space.",
+      "signal": "spec_precision_gap",
+      "scope": "entrypoints",
+      "status": "candidate",
+      "features": [
+        "hook-status"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        ".specs/features/hook-status/validation.md (isMain spaced-path bug, fixed 4a67476, no regression test) (entrypoints)"
+      ],
+      "created": "2026-07-17T05:38:31Z",
+      "last_seen": "2026-07-17T05:38:31Z"
     }
   ]
 }

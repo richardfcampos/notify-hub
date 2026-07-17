@@ -36,6 +36,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: .specs/features/db-channels/validation.md (mutation b, dispatch fallback) (tests)
 - last seen: 2026-07-16T21:28:33Z
 
+### L-005 — CLI entry guards comparing import.meta.url to argv[1] must use pathToFileURL (spaced paths break string concat) and be covered by a spawn test using a path containing a space.
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `entrypoints` · harmful: 0
+- features: hook-status
+- evidence: .specs/features/hook-status/validation.md (isMain spaced-path bug, fixed 4a67476, no regression test) (entrypoints)
+- last seen: 2026-07-17T05:38:31Z
+
 ## Quarantined (failed when applied — ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
