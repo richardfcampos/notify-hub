@@ -26,6 +26,7 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 | AD-016 | Config store = SQLite (`better-sqlite3`) at `DB_PATH` on a Docker volume; channels + profiles live in the DB, `.env` keeps infra only. SUPERSEDES AD-005/006 (config via env) for channels/profiles | User: "um db"; embedded, no extra container | User |
 | AD-017 | Channel model = named INSTANCES: N per type, each `{id (slug), label, type, enabled, config}`; profiles reference instance ids. Registry keyed by TYPE; adapters built per-instance | User: multiple slacks/discords per company, name + label | User |
 | AD-018 | Apply = hot-reload: gateway/worker read config through the repository at request/delivery time (no restart). SUPERSEDES AD-013/014 Save&Apply/compose-restart and the startup fail-fast (moves to write-time + send-time) | User chose hot-reload | User |
+| AD-019 | MCP config surface = Streamable HTTP at `POST /mcp` on the ADMIN service (8081), stateless; shared tool-registration module (send tools on stdio + HTTP; config CRUD tools HTTP-only) reusing config-validation + repos; unauthenticated like the panel (gateway layer adds consumer tokens); registered in user's mcp-manager (intel:7788) by URL | User: "configurar por lá" via mcp-manager, which registers remotes by `url` | User |
 
 ---
 
