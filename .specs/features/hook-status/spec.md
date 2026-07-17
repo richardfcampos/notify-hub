@@ -64,3 +64,25 @@ The Claude Code hook sends a bare event + message excerpt. The user wants, acros
 ## Success Criteria
 - [ ] Live: finish a real task in any project → phone shows `✅ <project> — concluído` with Início/Fim/duração and headline; a permission prompt → `🙋` push.
 - [ ] All behavior unit-tested (fake fetch/fs/transcript), zero-dep hook preserved, always exit 0.
+
+---
+
+## Amendment 1 — Idle debounce (2026-07-17)
+
+User feedback (verbatim): "to sendo flodado de notificações, pq a cada coisa que o claude conclui ele manda uma, ele deveria so mandar quando realmente terminar tudo, n tiver fazendo nada ou precisar de mim". Root cause: `Stop` fires at the end of EVERY assistant turn (including conversational replies), and parallel sessions multiply it.
+
+### HOOK-06: Idle-debounced end notification ⭐
+1. WHEN Stop fires THEN the hook SHALL NOT send immediately: it SHALL persist the computed payload + stop timestamp and spawn a detached, unref'd deferred-sender for the same session that fires after `NOTIFY_IDLE_SECONDS` (default **180**, `0` = legacy immediate send).
+2. WHEN a new UserPromptSubmit for the SAME session occurs before the deferred send fires THEN the pending notification SHALL be cancelled (deferred sender sees newer activity and exits silently — the user is present).
+3. WHEN a NEWER Stop supersedes an older pending one (same session) THEN only the newest SHALL send (older deferred senders detect they are stale and exit); the sent payload reflects the LATEST turn, with Início = session start (unchanged).
+4. WHEN the Notification (needs-input) event fires THEN it SHALL send IMMEDIATELY (never debounced).
+5. The deferred sender SHALL inherit the always-exit-0/never-block contract and the same config resolution.
+
+### Edge cases (Amendment 1)
+- Deferred sender crashes/killed → no push (fail-silent), never blocks anything.
+- Machine sleeps through the window → send on wake when the timer fires (acceptable).
+- Debounce state lives in the same tmp dir as the start-cache, keyed by session_id.
+
+| ID | Story | Status |
+| -- | ----- | ------ |
+| HOOK-06 | Idle-debounced end notification | Pending |
