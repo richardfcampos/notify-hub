@@ -79,28 +79,54 @@ in **all three** places.
 > `Notification` fires on `event=needs-input` (e.g. Claude is waiting on a
 > permission prompt). Omit whichever entries you don't want pushes for.
 
-## 4. Configure the hook's environment
+## 4. Configure the hook
 
-The hook reads its config from `process.env`, so these variables must be set
-in the shell Claude Code (and therefore the hook subprocess) runs in --
-typically your shell profile (`~/.zshrc`, `~/.bashrc`) or a global `.env`
-your shell sources on login. See
+Two ways to supply `NOTIFY_URL`/`NOTIFY_TOKEN`/toggles -- pick one (or mix):
+
+### Option A -- config file (recommended, zero shell-profile setup)
+
+Create `~/.config/notify-hub/hook.env` (`chmod 600` it -- it holds a bearer
+token) as a simple `KEY=VALUE` file:
+
+```bash
+mkdir -p ~/.config/notify-hub
+cat > ~/.config/notify-hub/hook.env <<'EOF'
+NOTIFY_URL=http://localhost:8080/notify
+NOTIFY_TOKEN=supersecrettoken
+NOTIFY_ON_START=false
+NOTIFY_ON_END=true
+NOTIFY_ON_NEEDS_INPUT=true
+EOF
+chmod 600 ~/.config/notify-hub/hook.env
+```
+
+The hook reads this file automatically -- no shell restart, no `~/.zshrc`
+edit, works the same across every project. Point it at a different file
+with `NOTIFY_HOOK_CONFIG=/path/to/hook.env`. Blank lines and `#` comments
+are ignored; a malformed line is skipped rather than breaking the rest of
+the file.
+
+### Option B -- environment variables (still supported, takes precedence)
+
+The hook also reads `process.env` directly, so exporting these in your
+shell profile (`~/.zshrc`, `~/.bashrc`) still works -- and **wins over the
+config file** for any variable it sets. See
 [`.env.example`](./.env.example) in this folder for the full list:
 
 | Variable | Required | Purpose |
 | -------- | -------- | ------- |
-| `NOTIFY_URL` | yes | Full URL to the gateway's `/notify` endpoint, e.g. `http://localhost:8080/notify` |
-| `NOTIFY_TOKEN` | yes | Bearer token configured in the gateway's `TOKENS` env var |
-| `NOTIFY_ON_START` | no (default enabled) | Set to `false` to silence the task-start push |
-| `NOTIFY_ON_END` | no (default enabled) | Set to `false` to silence the task-end push |
-| `NOTIFY_ON_NEEDS_INPUT` | no (default enabled) | Set to `false` to silence the needs-input push |
+| `NOTIFY_URL` | yes (unless in config file) | Full URL to the gateway's `/notify` endpoint, e.g. `http://localhost:8080/notify` |
+| `NOTIFY_TOKEN` | yes (unless in config file) | Bearer token configured in the gateway's `TOKENS` env var |
+| `NOTIFY_ON_START` | no (default **off**) | Set to `true` to also get a push when a task starts; the start time is always cached for duration regardless |
+| `NOTIFY_ON_END` | no (default on) | Set to `false` to silence the task-end push |
+| `NOTIFY_ON_NEEDS_INPUT` | no (default on) | Set to `false` to silence the needs-input push |
+| `NOTIFY_HOOK_CONFIG` | no | Overrides the config-file path (default `~/.config/notify-hub/hook.env`) |
 
 Example (`~/.zshrc`):
 
 ```bash
 export NOTIFY_URL="http://localhost:8080/notify"
 export NOTIFY_TOKEN="supersecrettoken"
-export NOTIFY_ON_START=true
 export NOTIFY_ON_END=true
 export NOTIFY_ON_NEEDS_INPUT=true
 ```
@@ -109,15 +135,19 @@ Open a new terminal (or `source ~/.zshrc`) so Claude Code inherits the vars.
 
 ## 5. Try it
 
-Run any Claude Code task in any project. You should get a "start" push when
-you submit a prompt, an "end" push naming the project when Claude finishes,
-and a "needs-input" push if Claude stops to ask for permission.
+Run any Claude Code task in any project. By default you'll get an "end"
+push (`✅ <project> — concluído` or `🤔 <project> — aguardando sua decisão`
+if Claude's last message ends in a question) with start/end time, duration
+and a headline, and a "needs-input" push (`🙋 <project> — precisa de você`)
+if Claude stops to ask for permission. Set `NOTIFY_ON_START=true` if you
+also want a push the moment you submit a prompt.
 
 ## Troubleshooting
 
-- **No pushes at all**: confirm `NOTIFY_URL`/`NOTIFY_TOKEN` are set in the
-  shell Claude Code actually runs in (`echo $NOTIFY_URL` in that same
-  terminal). Confirm the gateway is up: `curl $NOTIFY_URL/../health` (i.e.
+- **No pushes at all**: confirm `NOTIFY_URL`/`NOTIFY_TOKEN` are set, either
+  as env vars in the shell Claude Code actually runs in (`echo $NOTIFY_URL`
+  in that same terminal) or in `~/.config/notify-hub/hook.env`. Confirm the
+  gateway is up: `curl $NOTIFY_URL/../health` (i.e.
   `http://localhost:8080/health`) should return `{"status":"ok","redis":true}`.
 - **Hook never blocks/fails Claude, even when misconfigured** -- this is by
   design (spec NOTIF-13.4). The hook always exits `0`; on a network error,
@@ -128,11 +158,16 @@ and a "needs-input" push if Claude stops to ask for permission.
   the session transcript; if the transcript is unreadable or has no
   assistant message yet, the push still sends with a generic message rather
   than failing.
-- **"end" push is missing a duration**: duration is cached from the "start"
-  push's timestamp (in `$TMPDIR`, keyed by session id) and read back at
-  "end". If `NOTIFY_ON_START` was disabled or the session ID differs, the
-  duration is simply omitted -- never blocks the send.
-- **One project not toggled the way you want**: the env vars are read from
-  the process environment at hook-invocation time, so a project-local
+- **"end" push is missing a duration**: the task start time is cached (in
+  `$TMPDIR`, keyed by session id) on every prompt submit regardless of
+  `NOTIFY_ON_START`, and read back at "end". If the session ID differs
+  between the two hook calls, the duration is simply omitted -- never
+  blocks the send.
+- **Project name looks wrong in a worktree**: the hook resolves the
+  *main* repository's name (via `git rev-parse --git-common-dir`), not the
+  worktree directory's own name, so every worktree of a project reports
+  under the same project name.
+- **One project not toggled the way you want**: config is resolved fresh
+  on every hook call (env, then the config file), so a project-local
   `.claude/settings.json` + shell env override (e.g. a per-repo
   `direnv`/`.envrc`) lets you tune toggles per project.
