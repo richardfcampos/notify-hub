@@ -59,6 +59,8 @@ Ops done alongside: user default channel ntfy (live), Claude hook merged into ~/
 
 ---
 
+**Feature 5 — mcp-config: COMPLETE & VALIDATED.** MCP Streamable HTTP endpoint `POST /mcp` on the admin service (8081, stateless, SDK 1.29.0): 10 tools = 3 send (shared with stdio) + 7 config (get_config, upsert/delete_channel, upsert/delete_profile, test_channel, get_status) reusing the exact PUT-route validation/services (shared config-service/test-send-service/status-service). 277 tests. Verifier PASS iteration 1 (7/7 ACs, sensor 5/5, live 10 tools). Commits 8f812b6, 39ba409, 3ec9ad8. Register in mcp-manager (intel:7788) as remote url `http://host.docker.internal:8081/mcp`.
+
 ### Prior features (all COMPLETE & VALIDATED)
 
 **Phase:** Execute — IN PROGRESS. Tasks approved (24 tasks, 5 phases + Verifier). Scope = all (MVP + T22 WhatsApp + T24 webhook).
