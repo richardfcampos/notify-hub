@@ -14,6 +14,11 @@ WhatsApp, or a generic webhook. Built so a [Claude Code](#claude-code-hook)
 hook can push you "task started" / "task finished" / "Claude needs you"
 notifications across every project, without ever blocking Claude.
 
+![notify-hub admin panel](./docs/images/admin-panel-dashboard.png)
+*The admin panel -- named channel instances (ntfy, email, slack, telegram,
+discord), token profiles with their default channels, and live gateway
+status, all editable with zero restart.*
+
 ## Why
 
 Claude Code (or any long-running script) leaves you watching a terminal for
@@ -58,6 +63,23 @@ client (curl / hook script)
 
 ## Quickstart
 
+Two ways to get going -- pick whichever fits how you like to configure things.
+
+**Option A -- configure everything in the panel (recommended, no `.env`
+needed at all):**
+
+```bash
+git clone https://github.com/richardfcampos/notify-hub.git && cd notify-hub
+docker compose up -d --build
+```
+
+Open `http://localhost:8081`, add a profile (pick a token) and add your
+channels, then hit save -- it's live immediately, no restart. `.env` is
+entirely optional; an absent one boots fine.
+
+**Option B -- seed from `.env` on first boot** (faster if you already have
+credentials handy and want the initial channels/token pre-populated):
+
 ```bash
 git clone https://github.com/richardfcampos/notify-hub.git && cd notify-hub
 ./scripts/setup-env.sh   # guided setup: prompts for each channel's credentials
@@ -65,6 +87,15 @@ git clone https://github.com/richardfcampos/notify-hub.git && cd notify-hub
                          # .env with chmod 600. Or do it by hand:
                          #   cp .env.example .env && $EDITOR .env
 docker compose up -d --build
+```
+
+This only seeds the database on its very first boot (while it's still
+empty) -- from then on, `.env` is ignored and every change happens in the
+[admin panel](#admin-panel), not by re-editing `.env`.
+
+Either way, confirm the gateway is up:
+
+```bash
 curl http://localhost:8080/health
 # => {"status":"ok","redis":true}
 ```
@@ -262,18 +293,25 @@ npm run dev:worker
 
 ## Verified
 
-`docker compose up -d --build` was run end-to-end against a real ntfy.sh
-topic:
+The full 4-service stack (`redis`, `api`, `worker`, `admin`) has been
+smoke-tested end-to-end via `docker compose up -d --build` plus `curl`/the
+admin panel and worker log inspection, covering:
 
-- `docker compose ps` -- all 3 services (`redis`, `api`, `worker`) up, `api`
-  healthcheck `healthy`.
-- `curl http://localhost:8080/health` -> `200 {"status":"ok","redis":true}`.
-- `curl -X POST http://localhost:8080/notify -H "Authorization: Bearer <token>" -d '{"title":"notify-hub","message":"smoke test"}'`
-  -> `202 {"jobId":"1"}`.
-- Worker log: `{"channel":"ntfy","msg":"sending notification"}` followed by
-  `{"channel":"ntfy","msg":"notification sent"}`.
-- Confirmed on the ntfy side too: `curl "https://ntfy.sh/<topic>/json?poll=1"`
-  returned the exact message: `{"title":"notify-hub","message":"smoke test", ...}`.
+- **Boot & health**: `docker compose ps` shows all 4 services up, `api`
+  healthcheck `healthy`; `curl http://localhost:8080/health` returns
+  `200 {"status":"ok","redis":true}`.
+- **Delivery**: `POST /notify` against a real channel (ntfy.sh) returns
+  `202 {jobId}`, and the worker log shows the send/success pair
+  (`"sending notification"` -> `"notification sent"`) with the message
+  confirmed as received on the channel side.
+- **SQLite-backed hot-reload**: adding or editing a channel through the
+  admin panel (or the MCP config tools) takes effect on the very next
+  `/notify` call with no `docker compose restart` -- verified by adding a
+  channel instance live and sending immediately after.
+- **Claude Code hook**: the zero-dependency hook script's rich "end"/
+  "needs-input" payloads (project, duration, status, headline) arrive
+  correctly, and the idle debounce suppresses duplicate notifications
+  during a burst of tool calls.
 
 If your environment can't reach the public internet (ntfy.sh), point
 `NTFY_URL` at a self-hosted ntfy instance instead and repeat the same smoke
