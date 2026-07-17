@@ -27,6 +27,7 @@ Self-hosted, free, multi-channel notification gateway (Docker + Redis queue). To
 | AD-017 | Channel model = named INSTANCES: N per type, each `{id (slug), label, type, enabled, config}`; profiles reference instance ids. Registry keyed by TYPE; adapters built per-instance | User: multiple slacks/discords per company, name + label | User |
 | AD-018 | Apply = hot-reload: gateway/worker read config through the repository at request/delivery time (no restart). SUPERSEDES AD-013/014 Save&Apply/compose-restart and the startup fail-fast (moves to write-time + send-time) | User chose hot-reload | User |
 | AD-019 | MCP config surface = Streamable HTTP at `POST /mcp` on the ADMIN service (8081), stateless; shared tool-registration module (send tools on stdio + HTTP; config CRUD tools HTTP-only) reusing config-validation + repos; unauthenticated like the panel (gateway layer adds consumer tokens); registered in user's mcp-manager (intel:7788) by URL | User: "configurar por lá" via mcp-manager, which registers remotes by `url` | User |
+| AD-020 | Hook credentials via `~/.config/notify-hub/hook.env` (chmod 600, env vars take precedence) — NOT shell profile; push events = end + needs-input (start push off by default, start TIME always cached); status heuristic: Notification→precisa de você, Stop+final `?`→aguardando decisão, else concluído; project = git toplevel basename | User explicitly requested all-projects notifications with start/end times, project and status (2026-07-17); avoids credential-in-zshrc that the safety classifier rightly blocked | User |
 
 ---
 
