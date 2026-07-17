@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const EVENT_MAP = {
   UserPromptSubmit: 'start',
@@ -470,7 +471,11 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`
+// `pathToFileURL` (not a raw `file://` string concat) so this comparison
+// still matches when the install path needs URL-encoding -- e.g. a space
+// in the directory name, which a plain `file://${argv[1]}` concat would
+// never equal against the percent-encoded `import.meta.url`.
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   void main()
 }

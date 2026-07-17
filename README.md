@@ -161,10 +161,12 @@ admin panel picks up new types automatically via `GET /api/channel-types`.
 
 ## Claude Code hook
 
-A zero-dependency hook script pushes "start" / "end" / "needs-input" events
-to notify-hub globally, across every Claude Code project. See
+A zero-dependency hook script pushes rich "end" (project, times, duration,
+status, headline) and "needs-input" events to notify-hub globally, across
+every Claude Code project -- zero-setup via a `~/.config/notify-hub/hook.env`
+config file (env vars still supported and take precedence). See
 [`clients/claude-code/install.md`](./clients/claude-code/install.md) for the
-full setup (settings.json snippet + env vars).
+full setup (settings.json snippet + config options).
 
 ## MCP server
 
