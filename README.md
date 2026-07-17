@@ -168,14 +168,18 @@ full setup (settings.json snippet + env vars).
 
 ## MCP server
 
-notify-hub also ships as an MCP (Model Context Protocol) server over stdio,
-exposing three tools -- `send_notification`, `list_channels`,
-`check_gateway_health` -- so an agent (Claude Code, Claude Desktop, any MCP
-client) can push notifications and check the gateway as tool calls instead
-of hand-rolled HTTP. It's a thin client of the already-running gateway (no
-direct Redis access). See
+notify-hub ships as an MCP (Model Context Protocol) server over two
+transports: **stdio** (three send tools -- `send_notification`,
+`list_channels`, `check_gateway_health` -- for Claude Code, Claude Desktop,
+or any MCP client that spawns a process) and **Streamable HTTP at `/mcp` on
+the admin service** (the same three tools plus seven config management
+tools -- create/edit/delete channels and profiles, test-send, status -- for
+MCP gateways like mcp-manager that register servers by URL). Both are thin
+clients of the already-running gateway/admin service (no direct Redis/DB
+access from the stdio transport). See
 [`clients/mcp/install.md`](./clients/mcp/install.md) for the full setup
-(`claude mcp add` command + generic `mcpServers` JSON config).
+(`claude mcp add` command, generic `mcpServers` JSON config, and gateway
+registration URL).
 
 ## Admin panel
 
