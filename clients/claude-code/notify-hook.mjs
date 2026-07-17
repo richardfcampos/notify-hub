@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Claude Code notification hook (spec NOTIF-13, HOOK-01..05). Reads a
+ * Claude Code notification hook (spec NOTIF-13, HOOK-01..06). Reads a
  * hook-event JSON payload from stdin, maps it to a notify-hub event,
  * builds a rich Notification body (project, times, status, headline), and
  * POSTs it to the gateway. Zero npm dependencies -- Node stdlib
@@ -11,13 +11,22 @@
  * at `~/.config/notify-hub/hook.env` (spec HOOK-04) so a user never has to
  * touch a shell profile.
  *
+ * End-of-task pushes are idle-debounced (spec HOOK-06): `Stop` persists the
+ * payload and spawns a detached copy of this same script in
+ * `--deferred-send` mode instead of sending right away, so a burst of
+ * conversational turns collapses into a single push once the session goes
+ * quiet for `NOTIFY_IDLE_SECONDS`. `UserPromptSubmit` refreshes an
+ * "activity" marker the deferred sender checks on wake to cancel itself
+ * when the user is already back.
+ *
  * Never blocks or fails Claude Code: every path (success, gateway error,
  * timeout, malformed input, missing config) ends in `process.exit(0)`
- * (spec NOTIF-13.4). Every external seam (event source, `fetch`, `now`) is
- * injected into the exported functions below so tests can drive them
- * without stdin or a real network call.
+ * (spec NOTIF-13.4). Every external seam (event source, `fetch`, `now`,
+ * `spawn`, `sleep`) is injected into the exported functions below so tests
+ * can drive them without stdin, a real network call, a real child process,
+ * or a real wait.
  */
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'node:path'
@@ -40,7 +49,8 @@ const CONFIG_KEYS = [
   'NOTIFY_TOKEN',
   'NOTIFY_ON_START',
   'NOTIFY_ON_END',
-  'NOTIFY_ON_NEEDS_INPUT'
+  'NOTIFY_ON_NEEDS_INPUT',
+  'NOTIFY_IDLE_SECONDS'
 ]
 const CONFIG_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const DEFAULT_CONFIG_PATH = join(homedir(), '.config', 'notify-hub', 'hook.env')
@@ -50,6 +60,9 @@ const REQUEST_TIMEOUT_MS = 3000
 const GIT_TIMEOUT_MS = 1000
 const HEADLINE_MAX_LENGTH = 140
 const MAX_BODY_LENGTH = 400
+// Default idle window before a debounced 'end' push actually sends (spec
+// HOOK-06.1); `0` disables debouncing entirely (legacy immediate send).
+const DEFAULT_IDLE_SECONDS = 180
 
 /** Maps a Claude Code `hook_event_name` to a notify-hub event, or `null` when unmapped. */
 export function mapEvent(hookEventName) {
@@ -132,6 +145,18 @@ function isEventEnabled(event, config) {
   return event === 'start' ? value === 'true' : value !== 'false'
 }
 
+/**
+ * Resolves how many seconds an 'end' push waits before actually sending
+ * (spec HOOK-06.1). Missing or non-numeric/negative values fall back to
+ * `DEFAULT_IDLE_SECONDS` rather than silently disabling the debounce;
+ * `0` is the explicit legacy opt-out (immediate send, pre-Amendment-1
+ * behavior).
+ */
+export function resolveIdleSeconds(config) {
+  const parsed = Number(config.NOTIFY_IDLE_SECONDS)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_IDLE_SECONDS
+}
+
 // --- Start-time caching ------------------------------------------------------
 
 function startTimeCachePath(sessionId) {
@@ -179,6 +204,138 @@ function writeStartTime(sessionId, startedAt) {
     writeFileSync(startTimeCachePath(sessionId), String(startedAt), 'utf8')
   } catch {
     // Best-effort; a failed cache write never blocks the hook.
+  }
+}
+
+// --- Idle-debounce state (spec HOOK-06) ---------------------------------------
+
+function activityCachePath(sessionId) {
+  return join(tmpdir(), `notify-hub-${sessionId}.activity`)
+}
+
+/**
+ * Best-effort: caches the current time as this session's last-activity
+ * marker. Refreshed on every `UserPromptSubmit` (spec HOOK-06.2) so a
+ * deferred sender still waiting out its idle window can tell the user
+ * already came back. Unlike the start-time cache this file is
+ * intentionally NOT cleared on read -- it stays a "user was here at T"
+ * fact until the next prompt overwrites it.
+ */
+function writeActivityTime(sessionId, activityAt) {
+  if (!sessionId) {
+    return
+  }
+  try {
+    writeFileSync(activityCachePath(sessionId), String(activityAt), 'utf8')
+  } catch {
+    // Best-effort; a failed cache write never blocks the hook.
+  }
+}
+
+/**
+ * Best-effort read (no delete) of the last-activity marker. Returns
+ * `undefined` when there is no session id, no cache file, or the file is
+ * unreadable/corrupt -- a deferred sender that can't read this treats the
+ * user as absent rather than blocking the send (spec NOTIF-13.5).
+ */
+function readActivityTime(sessionId) {
+  if (!sessionId) {
+    return undefined
+  }
+  const path = activityCachePath(sessionId)
+  try {
+    if (!existsSync(path)) {
+      return undefined
+    }
+    const parsed = Number(readFileSync(path, 'utf8').trim())
+    return Number.isFinite(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function pendingPayloadPath(sessionId) {
+  return join(tmpdir(), `notify-hub-${sessionId}.pending`)
+}
+
+/**
+ * Best-effort: persists the computed end-of-task payload alongside its
+ * Stop timestamp so a detached deferred sender -- a fresh process -- can
+ * pick it up after the idle window. Overwriting is intentional: a newer
+ * Stop for the same session always replaces the older pending entry, and
+ * whichever deferred sender reads back a matching `stopTs` is the one that
+ * gets to send (spec HOOK-06.1/3).
+ */
+function writePendingPayload(sessionId, stopTs, payload) {
+  try {
+    writeFileSync(pendingPayloadPath(sessionId), JSON.stringify({ stopTs, payload }), 'utf8')
+  } catch {
+    // Best-effort; if this write fails the deferred sender finds nothing
+    // and exits silently -- the push is lost, Claude is never blocked.
+  }
+}
+
+/** Best-effort read (no delete) of the pending payload; `undefined` when absent/corrupt. */
+function readPendingPayload(sessionId) {
+  const path = pendingPayloadPath(sessionId)
+  try {
+    if (!existsSync(path)) {
+      return undefined
+    }
+    const parsed = JSON.parse(readFileSync(path, 'utf8'))
+    return typeof parsed?.stopTs === 'number' ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Best-effort delete of the pending payload file once a deferred sender has consumed it. */
+function deletePendingPayload(sessionId) {
+  try {
+    unlinkSync(pendingPayloadPath(sessionId))
+  } catch {
+    // Cleanup is best-effort; a leftover pending file never blocks anything.
+  }
+}
+
+/**
+ * Pure decision for whether a deferred sender -- woken up after its idle
+ * wait -- should actually send (spec HOOK-06.2/3). `false` when either:
+ * newer activity than this Stop exists (the user came back), or the
+ * current pending entry is missing/belongs to a different (newer) Stop
+ * (this send was superseded). Exported so the truth table is unit-testable
+ * without spawning a real child process or waiting out a real timer.
+ */
+export function shouldDeferredSend({ activityTs, pendingStopTs, myStopTs }) {
+  if (activityTs !== undefined && activityTs > myStopTs) {
+    return false
+  }
+  if (pendingStopTs === undefined || pendingStopTs !== myStopTs) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Spawns a detached, unref'd copy of this same script in `--deferred-send`
+ * mode so the idle wait happens in an independent process: `Stop` returns
+ * (and Claude Code un-blocks) immediately regardless of how long
+ * `NOTIFY_IDLE_SECONDS` is (spec HOOK-06.1). Best-effort: a spawn failure
+ * just means the debounced push is lost, never that Stop errors.
+ */
+function spawnDeferredSender(sessionId, stopTs, spawnImpl) {
+  const ownPath = process.argv[1]
+  if (!ownPath) {
+    return
+  }
+  try {
+    const child = spawnImpl(process.execPath, [ownPath, '--deferred-send', sessionId, String(stopTs)], {
+      detached: true,
+      stdio: 'ignore'
+    })
+    child.unref?.()
+  } catch {
+    // Best-effort; see doc comment above.
   }
 }
 
@@ -397,37 +554,12 @@ export function buildPayload(hookInput, { now }) {
 }
 
 /**
- * Executes one hook invocation: resolves config (env, falling back to the
- * config file), honors the per-event toggle, builds the payload, and
- * POSTs it to the gateway. Every failure -- disabled toggle, missing
- * config, network error, timeout, non-2xx response -- is caught/handled
- * here and never thrown, so the caller can always safely exit 0 (spec
- * NOTIF-13.4).
+ * POSTs `payload` to the gateway. Every failure -- network error, timeout,
+ * non-2xx response -- is caught/handled here and never thrown, so both
+ * callers (`run`'s immediate path and `runDeferredSend`) can always safely
+ * continue to `process.exit(0)` (spec NOTIF-13.4).
  */
-export async function run(hookInput, { fetch: fetchImpl, env, now }) {
-  const event = mapEvent(hookInput.hook_event_name)
-  if (!event) {
-    return
-  }
-
-  if (event === 'start') {
-    // Cache the start time before the toggle check so a later `end` can
-    // still compute duration even though start pushes default to off.
-    writeStartTime(hookInput.session_id, now())
-  }
-
-  const config = resolveConfig(env)
-
-  if (!isEventEnabled(event, config)) {
-    return
-  }
-
-  if (!config.NOTIFY_URL) {
-    console.error('notify-hook: NOTIFY_URL not set; skipping notification')
-    return
-  }
-
-  const payload = buildPayload(hookInput, { now })
+async function postPayload(config, payload, fetchImpl) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
@@ -451,6 +583,91 @@ export async function run(hookInput, { fetch: fetchImpl, env, now }) {
   }
 }
 
+/**
+ * Executes one hook invocation: resolves config (env, falling back to the
+ * config file), honors the per-event toggle, then either sends immediately
+ * or -- for `end`, when idle-debouncing is on -- persists the payload and
+ * hands it off to a detached deferred sender (spec HOOK-06.1). Every
+ * failure -- disabled toggle, missing config, network error, timeout,
+ * non-2xx response -- is caught/handled here and never thrown, so the
+ * caller can always safely exit 0 (spec NOTIF-13.4).
+ */
+export async function run(hookInput, { fetch: fetchImpl, env, now, spawn: spawnImpl = spawn }) {
+  const event = mapEvent(hookInput.hook_event_name)
+  if (!event) {
+    return
+  }
+
+  if (event === 'start') {
+    // Cache the start time before the toggle check so a later `end` can
+    // still compute duration even though start pushes default to off;
+    // also refresh the activity marker so any pending deferred send for
+    // this session is cancelled the moment the user is back (HOOK-06.2).
+    writeStartTime(hookInput.session_id, now())
+    writeActivityTime(hookInput.session_id, now())
+  }
+
+  const config = resolveConfig(env)
+
+  if (!isEventEnabled(event, config)) {
+    return
+  }
+
+  if (!config.NOTIFY_URL) {
+    console.error('notify-hook: NOTIFY_URL not set; skipping notification')
+    return
+  }
+
+  if (event === 'end' && hookInput.session_id) {
+    const idleSeconds = resolveIdleSeconds(config)
+    if (idleSeconds > 0) {
+      // Debounce: persist the payload, spawn a detached sender that fires
+      // after the idle window, and return immediately -- `Stop` must never
+      // keep Claude Code waiting (spec HOOK-06.1).
+      const stopTs = now()
+      const payload = buildPayload(hookInput, { now: () => stopTs })
+      writePendingPayload(hookInput.session_id, stopTs, payload)
+      spawnDeferredSender(hookInput.session_id, stopTs, spawnImpl)
+      return
+    }
+  }
+
+  const payload = buildPayload(hookInput, { now })
+  await postPayload(config, payload, fetchImpl)
+}
+
+/**
+ * Runs the deferred (debounced) 'end' send: sleeps `NOTIFY_IDLE_SECONDS`
+ * then re-checks whether this Stop is still the freshest signal for the
+ * session (spec HOOK-06.2/3) via `shouldDeferredSend`. A cancelled or
+ * superseded send exits without touching the pending file -- it may
+ * already belong to a newer, still-running deferred sender. `sleep` is an
+ * injected `(ms) => Promise<void>` so tests can skip the real wait.
+ */
+export async function runDeferredSend(sessionId, stopTs, { fetch: fetchImpl, env, sleep: sleepImpl = sleep }) {
+  const config = resolveConfig(env)
+  const idleSeconds = resolveIdleSeconds(config)
+  await sleepImpl(idleSeconds * 1000)
+
+  const activityTs = readActivityTime(sessionId)
+  const pending = readPendingPayload(sessionId)
+
+  if (!shouldDeferredSend({ activityTs, pendingStopTs: pending?.stopTs, myStopTs: stopTs })) {
+    return
+  }
+
+  if (config.NOTIFY_URL) {
+    await postPayload(config, pending.payload, fetchImpl)
+  } else {
+    console.error('notify-hook: NOTIFY_URL not set; skipping deferred notification')
+  }
+  deletePendingPayload(sessionId)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function readStdin() {
   const chunks = []
   for await (const chunk of process.stdin) {
@@ -459,8 +676,23 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/**
+ * Entry point. `--deferred-send <sessionId> <stopTs>` re-invokes this same
+ * script as the detached idle-wait process spawned by `run` on `Stop`
+ * (spec HOOK-06.1); anything else is a normal hook invocation reading the
+ * event JSON from stdin. Both branches always exit 0.
+ */
 async function main() {
   try {
+    if (process.argv[2] === '--deferred-send') {
+      const sessionId = process.argv[3]
+      const stopTs = Number(process.argv[4])
+      if (sessionId && Number.isFinite(stopTs)) {
+        await runDeferredSend(sessionId, stopTs, { fetch, env: process.env })
+      }
+      return
+    }
+
     const raw = await readStdin()
     const hookInput = raw.trim() ? JSON.parse(raw) : {}
     await run(hookInput, { fetch, env: process.env, now: Date.now })

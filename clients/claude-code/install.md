@@ -96,6 +96,7 @@ NOTIFY_TOKEN=supersecrettoken
 NOTIFY_ON_START=false
 NOTIFY_ON_END=true
 NOTIFY_ON_NEEDS_INPUT=true
+NOTIFY_IDLE_SECONDS=180
 EOF
 chmod 600 ~/.config/notify-hub/hook.env
 ```
@@ -120,6 +121,7 @@ config file** for any variable it sets. See
 | `NOTIFY_ON_START` | no (default **off**) | Set to `true` to also get a push when a task starts; the start time is always cached for duration regardless |
 | `NOTIFY_ON_END` | no (default on) | Set to `false` to silence the task-end push |
 | `NOTIFY_ON_NEEDS_INPUT` | no (default on) | Set to `false` to silence the needs-input push |
+| `NOTIFY_IDLE_SECONDS` | no (default **180**) | How long an "end" push waits, quiet, before actually sending -- see [Idle debounce](#idle-debounce-quiet-window-for-the-end-push) below. `0` restores the old immediate-send behavior |
 | `NOTIFY_HOOK_CONFIG` | no | Overrides the config-file path (default `~/.config/notify-hub/hook.env`) |
 
 Example (`~/.zshrc`):
@@ -129,18 +131,51 @@ export NOTIFY_URL="http://localhost:8080/notify"
 export NOTIFY_TOKEN="supersecrettoken"
 export NOTIFY_ON_END=true
 export NOTIFY_ON_NEEDS_INPUT=true
+export NOTIFY_IDLE_SECONDS=180
 ```
 
 Open a new terminal (or `source ~/.zshrc`) so Claude Code inherits the vars.
 
+### Idle debounce (quiet window for the "end" push)
+
+Claude Code's `Stop` hook fires at the end of **every** assistant turn --
+including plain conversational replies, not just when a whole task wraps
+up. Sending a push on every one of those (especially across several
+parallel sessions) is a flood, not a signal.
+
+So the "end" push is debounced instead of sent immediately: on `Stop`, the
+hook saves the computed push and waits `NOTIFY_IDLE_SECONDS` (default
+**180**) of *quiet* -- no new prompt in that same session -- before it
+actually sends. Two things can happen during that window:
+
+- **You send another prompt** -- the held push is cancelled outright.
+  You're clearly still there; no notification needed. If Claude then stops
+  again later, that later `Stop` starts its own fresh window.
+- **A later `Stop` in the same session fires first** (e.g. one more
+  conversational back-and-forth before you step away) -- it replaces the
+  held push with the newest one and restarts the window; only one push
+  ever ends up sending per quiet period.
+
+If you close the terminal or the machine sleeps through the window, the
+push simply sends whenever the window elapses (or is silently lost if the
+process never gets to run again) -- either way it never blocks or delays
+Claude Code itself, since the wait happens in a separate, detached
+process, not in the `Stop` hook invocation itself.
+
+Set `NOTIFY_IDLE_SECONDS=0` to turn debouncing off and go back to a push
+on every single `Stop`. The needs-input push (`Notification` event) is
+**never** debounced -- a permission prompt always needs you right away.
+
 ## 5. Try it
 
-Run any Claude Code task in any project. By default you'll get an "end"
-push (`✅ <project> — concluído` or `🤔 <project> — aguardando sua decisão`
-if Claude's last message ends in a question) with start/end time, duration
+Run any Claude Code task in any project. By default, once the session goes
+quiet for `NOTIFY_IDLE_SECONDS` (180s) you'll get one "end" push
+(`✅ <project> — concluído` or `🤔 <project> — aguardando sua decisão` if
+Claude's last message ends in a question) with start/end time, duration
 and a headline, and a "needs-input" push (`🙋 <project> — precisa de você`)
-if Claude stops to ask for permission. Set `NOTIFY_ON_START=true` if you
-also want a push the moment you submit a prompt.
+immediately if Claude stops to ask for permission. Set
+`NOTIFY_ON_START=true` if you also want a push the moment you submit a
+prompt.
 
 ## Troubleshooting
 
@@ -167,6 +202,12 @@ also want a push the moment you submit a prompt.
   *main* repository's name (via `git rev-parse --git-common-dir`), not the
   worktree directory's own name, so every worktree of a project reports
   under the same project name.
+- **"end" push takes a few minutes to arrive / never arrives**: by design
+  (see [Idle debounce](#idle-debounce-quiet-window-for-the-end-push)) --
+  it waits out `NOTIFY_IDLE_SECONDS` (180s by default) of quiet before
+  sending, and is cancelled entirely if you send another prompt first. Set
+  `NOTIFY_IDLE_SECONDS=0` if you want the old immediate-on-every-`Stop`
+  behavior back instead.
 - **One project not toggled the way you want**: config is resolved fresh
   on every hook call (env, then the config file), so a project-local
   `.claude/settings.json` + shell env override (e.g. a per-repo

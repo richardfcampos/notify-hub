@@ -1,20 +1,22 @@
 /**
- * Tests derive from spec NOTIF-13 and HOOK-01..05 ACs: event mapping,
- * config resolution (env-first, config-file fallback, malformed lines
- * ignored), start-time caching (always, independent of the toggle),
- * project naming (git toplevel, worktree resolves to the main repo),
- * the done/decision/needs-input status heuristic, payload shape/field
- * values, env-toggle gating (fetch not called when disabled), and
- * exit-0-on-error behavior (`run` never throws). No real network call is
- * ever made -- `fetch` is injected as a fake in every `run()` test. Every
- * `run()`/`resolveConfig()` test pins `NOTIFY_HOOK_CONFIG` to either a
- * controlled temp file or a guaranteed-missing path so these tests never
- * depend on (or are broken by) a real `~/.config/notify-hub/hook.env` on
- * the machine running them.
+ * Tests derive from spec NOTIF-13, HOOK-01..05, and Amendment 1's HOOK-06
+ * ACs: event mapping, config resolution (env-first, config-file fallback,
+ * malformed lines ignored), start-time caching (always, independent of the
+ * toggle), project naming (git toplevel, worktree resolves to the main
+ * repo), the done/decision/needs-input status heuristic, payload
+ * shape/field values, env-toggle gating (fetch not called when disabled),
+ * exit-0-on-error behavior (`run` never throws), and the idle-debounced
+ * end-of-task send (pending-file persistence, detached-spawn hand-off,
+ * activity-based cancellation, stale-send supersession). No real network
+ * call, child process, or wait is ever made -- `fetch`, `spawn`, and
+ * `sleep` are all injected fakes. Every `run()`/`resolveConfig()` test
+ * pins `NOTIFY_HOOK_CONFIG` to either a controlled temp file or a
+ * guaranteed-missing path so these tests never depend on (or are broken
+ * by) a real `~/.config/notify-hub/hook.env` on the machine running them.
  */
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -27,8 +29,11 @@ import {
   mapEvent,
   parseConfigFile,
   resolveConfig,
+  resolveIdleSeconds,
   resolveProjectName,
-  run
+  run,
+  runDeferredSend,
+  shouldDeferredSend
 } from './notify-hook.mjs'
 
 const createdSessionIds = []
@@ -42,6 +47,14 @@ function freshSessionId() {
 
 function startCachePath(sessionId) {
   return join(tmpdir(), `notify-hub-${sessionId}.start`)
+}
+
+function activityCachePath(sessionId) {
+  return join(tmpdir(), `notify-hub-${sessionId}.activity`)
+}
+
+function pendingPayloadPath(sessionId) {
+  return join(tmpdir(), `notify-hub-${sessionId}.pending`)
 }
 
 function makeTempDir(prefix) {
@@ -58,6 +71,12 @@ function runGit(args, cwd) {
   return result.stdout
 }
 
+// A no-op spawn fake for tests that only care whether `run()` sent
+// immediately vs. deferred -- records nothing, never actually spawns.
+function noopSpawn() {
+  return { unref() {} }
+}
+
 // Guaranteed not to exist on disk -- keeps run()/resolveConfig() tests
 // hermetic regardless of whether a real hook.env has been created on this
 // machine (e.g. by the H2 live-bootstrap step).
@@ -66,9 +85,10 @@ const MISSING_CONFIG_PATH = join(tmpdir(), 'notify-hub-hook-test-missing-config'
 afterEach(() => {
   while (createdSessionIds.length > 0) {
     const id = createdSessionIds.pop()
-    const path = startCachePath(id)
-    if (existsSync(path)) {
-      unlinkSync(path)
+    for (const path of [startCachePath(id), activityCachePath(id), pendingPayloadPath(id)]) {
+      if (existsSync(path)) {
+        unlinkSync(path)
+      }
     }
   }
   while (tempPathsToClean.length > 0) {
@@ -559,7 +579,8 @@ describe('run', () => {
         env: {
           NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH,
           NOTIFY_URL: 'http://localhost:8080/notify',
-          NOTIFY_TOKEN: 'sekret'
+          NOTIFY_TOKEN: 'sekret',
+          NOTIFY_IDLE_SECONDS: '0'
         },
         now
       }
@@ -656,7 +677,11 @@ describe('run', () => {
         { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: freshSessionId() },
         {
           fetch: fetchImpl,
-          env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+          env: {
+            NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH,
+            NOTIFY_URL: 'http://localhost:8080/notify',
+            NOTIFY_IDLE_SECONDS: '0'
+          },
           now
         }
       )
@@ -671,7 +696,11 @@ describe('run', () => {
         { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: freshSessionId() },
         {
           fetch: fetchImpl,
-          env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+          env: {
+            NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH,
+            NOTIFY_URL: 'http://localhost:8080/notify',
+            NOTIFY_IDLE_SECONDS: '0'
+          },
           now
         }
       )
@@ -729,7 +758,7 @@ describe('run', () => {
 
     await run(
       { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: freshSessionId() },
-      { fetch: fetchImpl, env: { NOTIFY_HOOK_CONFIG: configPath }, now }
+      { fetch: fetchImpl, env: { NOTIFY_HOOK_CONFIG: configPath, NOTIFY_IDLE_SECONDS: '0' }, now }
     )
 
     expect(calls).toHaveLength(1)
@@ -752,7 +781,7 @@ describe('run', () => {
       { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: freshSessionId() },
       {
         fetch: fetchImpl,
-        env: { NOTIFY_HOOK_CONFIG: configPath, NOTIFY_URL: 'http://from-env:8080/notify' },
+        env: { NOTIFY_HOOK_CONFIG: configPath, NOTIFY_URL: 'http://from-env:8080/notify', NOTIFY_IDLE_SECONDS: '0' },
         now
       }
     )
@@ -778,9 +807,348 @@ describe('run', () => {
 
     await run(
       { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: freshSessionId() },
-      { fetch: fetchImpl, env: { NOTIFY_HOOK_CONFIG: configPath }, now }
+      { fetch: fetchImpl, env: { NOTIFY_HOOK_CONFIG: configPath, NOTIFY_IDLE_SECONDS: '0' }, now }
     )
 
     expect(calls).toHaveLength(1)
+  })
+})
+
+// --- Amendment 1 / HOOK-06: idle-debounced end notification ------------------
+
+describe('resolveIdleSeconds', () => {
+  it('defaults to 180 when NOTIFY_IDLE_SECONDS is absent', () => {
+    expect(resolveIdleSeconds({})).toBe(180)
+  })
+
+  it('parses a configured value', () => {
+    expect(resolveIdleSeconds({ NOTIFY_IDLE_SECONDS: '30' })).toBe(30)
+  })
+
+  it('treats "0" as the legacy immediate-send opt-out', () => {
+    expect(resolveIdleSeconds({ NOTIFY_IDLE_SECONDS: '0' })).toBe(0)
+  })
+
+  it('falls back to the default for a non-numeric value', () => {
+    expect(resolveIdleSeconds({ NOTIFY_IDLE_SECONDS: 'not-a-number' })).toBe(180)
+  })
+
+  it('falls back to the default for a negative value', () => {
+    expect(resolveIdleSeconds({ NOTIFY_IDLE_SECONDS: '-5' })).toBe(180)
+  })
+})
+
+describe('shouldDeferredSend (truth table)', () => {
+  it('does not send when activity is newer than this Stop (user came back)', () => {
+    expect(
+      shouldDeferredSend({ activityTs: 2_000, pendingStopTs: 1_000, myStopTs: 1_000 })
+    ).toBe(false)
+  })
+
+  it('does not send when the pending entry belongs to a newer Stop (superseded)', () => {
+    expect(
+      shouldDeferredSend({ activityTs: undefined, pendingStopTs: 2_000, myStopTs: 1_000 })
+    ).toBe(false)
+  })
+
+  it('does not send when the pending entry is missing', () => {
+    expect(
+      shouldDeferredSend({ activityTs: undefined, pendingStopTs: undefined, myStopTs: 1_000 })
+    ).toBe(false)
+  })
+
+  it('sends when there is no newer activity and the pending entry matches this Stop', () => {
+    expect(
+      shouldDeferredSend({ activityTs: undefined, pendingStopTs: 1_000, myStopTs: 1_000 })
+    ).toBe(true)
+  })
+
+  it('sends when the last activity is at or before this Stop', () => {
+    expect(
+      shouldDeferredSend({ activityTs: 1_000, pendingStopTs: 1_000, myStopTs: 1_000 })
+    ).toBe(true)
+  })
+})
+
+describe('run: Stop debounce (NOTIFY_IDLE_SECONDS > 0)', () => {
+  const now = () => 5_000
+
+  it('does not call fetch, writes a pending file, and spawns a detached sender', async () => {
+    const fetchCalls = []
+    const fetchImpl = async (url, options) => {
+      fetchCalls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+    const spawnCalls = []
+    const spawnImpl = (command, args, options) => {
+      spawnCalls.push({ command, args, options })
+      return { unref: () => {} }
+    }
+    const sessionId = freshSessionId()
+
+    await run(
+      { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: sessionId },
+      {
+        fetch: fetchImpl,
+        env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+        now,
+        spawn: spawnImpl
+      }
+    )
+
+    expect(fetchCalls).toHaveLength(0)
+
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(true)
+    const pending = JSON.parse(readFileSync(pendingPayloadPath(sessionId), 'utf8'))
+    expect(pending.stopTs).toBe(now())
+    expect(pending.payload.metadata.event).toBe('end')
+    expect(pending.payload.metadata.project).toBe('my-project')
+
+    expect(spawnCalls).toHaveLength(1)
+    expect(spawnCalls[0].args[1]).toBe('--deferred-send')
+    expect(spawnCalls[0].args[2]).toBe(sessionId)
+    expect(spawnCalls[0].args[3]).toBe(String(now()))
+    expect(spawnCalls[0].options.detached).toBe(true)
+    expect(spawnCalls[0].options.stdio).toBe('ignore')
+  })
+
+  it('a newer Stop overwrites the pending entry (stopTs updated) and spawns again', async () => {
+    const fetchImpl = async () => ({ ok: true, status: 202 })
+    const spawnCalls = []
+    const spawnImpl = (command, args) => {
+      spawnCalls.push(args)
+      return { unref: () => {} }
+    }
+    const sessionId = freshSessionId()
+    const env = { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' }
+
+    await run(
+      { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: sessionId },
+      { fetch: fetchImpl, env, now: () => 1_000, spawn: spawnImpl }
+    )
+    await run(
+      { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: sessionId },
+      { fetch: fetchImpl, env, now: () => 2_000, spawn: spawnImpl }
+    )
+
+    const pending = JSON.parse(readFileSync(pendingPayloadPath(sessionId), 'utf8'))
+    expect(pending.stopTs).toBe(2_000)
+    expect(spawnCalls).toHaveLength(2)
+    expect(spawnCalls[0][3]).toBe('1000')
+    expect(spawnCalls[1][3]).toBe('2000')
+  })
+})
+
+describe('run: Stop legacy immediate send (NOTIFY_IDLE_SECONDS = 0)', () => {
+  it('POSTs immediately and never writes a pending file', async () => {
+    const fetchCalls = []
+    const fetchImpl = async (url, options) => {
+      fetchCalls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+    const sessionId = freshSessionId()
+
+    await run(
+      { hook_event_name: 'Stop', cwd: '/Users/dev/my-project', session_id: sessionId },
+      {
+        fetch: fetchImpl,
+        env: {
+          NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH,
+          NOTIFY_URL: 'http://localhost:8080/notify',
+          NOTIFY_IDLE_SECONDS: '0'
+        },
+        now: () => 9_000,
+        spawn: noopSpawn
+      }
+    )
+
+    expect(fetchCalls).toHaveLength(1)
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(false)
+  })
+})
+
+describe('run: UserPromptSubmit refreshes the activity marker', () => {
+  it('writes/refreshes the activity file regardless of the start-push toggle', async () => {
+    const fetchImpl = async () => ({ ok: true, status: 202 })
+    const sessionId = freshSessionId()
+
+    await run(
+      { hook_event_name: 'UserPromptSubmit', cwd: '/Users/dev/my-project', session_id: sessionId },
+      {
+        fetch: fetchImpl,
+        env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+        now: () => 4_242
+      }
+    )
+
+    expect(existsSync(activityCachePath(sessionId))).toBe(true)
+    expect(readFileSync(activityCachePath(sessionId), 'utf8')).toBe('4242')
+  })
+})
+
+describe('run: Notification always sends immediately, even with idle debounce on', () => {
+  it('calls fetch right away without writing a pending file or spawning', async () => {
+    const fetchCalls = []
+    const fetchImpl = async (url, options) => {
+      fetchCalls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+    const spawnCalls = []
+    const spawnImpl = (...args) => {
+      spawnCalls.push(args)
+      return { unref: () => {} }
+    }
+    const sessionId = freshSessionId()
+
+    await run(
+      {
+        hook_event_name: 'Notification',
+        cwd: '/Users/dev/my-project',
+        session_id: sessionId,
+        message: 'needs input'
+      },
+      {
+        fetch: fetchImpl,
+        env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+        now: () => 1_000,
+        spawn: spawnImpl
+      }
+    )
+
+    expect(fetchCalls).toHaveLength(1)
+    expect(spawnCalls).toHaveLength(0)
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(false)
+  })
+})
+
+describe('runDeferredSend (integration-ish: real decision logic, injected sleep)', () => {
+  const instantSleep = async () => {}
+
+  it('cancels when a newer activity marker exists (user came back)', async () => {
+    const sessionId = freshSessionId()
+    const stopTs = 1_000
+    writeFileSync(pendingPayloadPath(sessionId), JSON.stringify({ stopTs, payload: { title: 'x' } }), 'utf8')
+    writeFileSync(activityCachePath(sessionId), '2000', 'utf8')
+
+    const calls = []
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+
+    await runDeferredSend(sessionId, stopTs, {
+      fetch: fetchImpl,
+      env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+      sleep: instantSleep
+    })
+
+    expect(calls).toHaveLength(0)
+    // Cancellation never touches the pending file -- it may belong to a
+    // still-running deferred sender for a subsequent Stop.
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(true)
+  })
+
+  it('cancels when the pending entry has been superseded by a newer Stop', async () => {
+    const sessionId = freshSessionId()
+    const staleStopTs = 1_000
+    // A newer Stop already overwrote the pending file with its own stopTs.
+    writeFileSync(
+      pendingPayloadPath(sessionId),
+      JSON.stringify({ stopTs: 2_000, payload: { title: 'newest' } }),
+      'utf8'
+    )
+
+    const calls = []
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+
+    await runDeferredSend(sessionId, staleStopTs, {
+      fetch: fetchImpl,
+      env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+      sleep: instantSleep
+    })
+
+    expect(calls).toHaveLength(0)
+    // Must not delete the newer pending entry that belongs to another sender.
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(true)
+    const remaining = JSON.parse(readFileSync(pendingPayloadPath(sessionId), 'utf8'))
+    expect(remaining.stopTs).toBe(2_000)
+  })
+
+  it('sends the saved payload and deletes the pending file when this is still the freshest Stop', async () => {
+    const sessionId = freshSessionId()
+    const stopTs = 1_000
+    const payload = { title: '✅ my-project — concluído', message: 'Fim 10:00', priority: 'default' }
+    writeFileSync(pendingPayloadPath(sessionId), JSON.stringify({ stopTs, payload }), 'utf8')
+
+    const calls = []
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+
+    await runDeferredSend(sessionId, stopTs, {
+      fetch: fetchImpl,
+      env: {
+        NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH,
+        NOTIFY_URL: 'http://localhost:8080/notify',
+        NOTIFY_TOKEN: 'sekret'
+      },
+      sleep: instantSleep
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('http://localhost:8080/notify')
+    expect(calls[0].options.headers.authorization).toBe('Bearer sekret')
+    expect(JSON.parse(calls[0].options.body)).toEqual(payload)
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(false)
+  })
+
+  it('sends without a prior activity marker at all (the common case: no UserPromptSubmit since Stop)', async () => {
+    const sessionId = freshSessionId()
+    const stopTs = 1_000
+    const payload = { title: '✅ my-project — concluído', message: 'Fim 10:00', priority: 'default' }
+    writeFileSync(pendingPayloadPath(sessionId), JSON.stringify({ stopTs, payload }), 'utf8')
+
+    const calls = []
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+
+    await runDeferredSend(sessionId, stopTs, {
+      fetch: fetchImpl,
+      env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH, NOTIFY_URL: 'http://localhost:8080/notify' },
+      sleep: instantSleep
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(existsSync(activityCachePath(sessionId))).toBe(false)
+  })
+
+  it('resolves without throwing and skips the send when NOTIFY_URL is unset', async () => {
+    const sessionId = freshSessionId()
+    const stopTs = 1_000
+    writeFileSync(pendingPayloadPath(sessionId), JSON.stringify({ stopTs, payload: { title: 'x' } }), 'utf8')
+
+    const calls = []
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, options })
+      return { ok: true, status: 202 }
+    }
+
+    await expect(
+      runDeferredSend(sessionId, stopTs, {
+        fetch: fetchImpl,
+        env: { NOTIFY_HOOK_CONFIG: MISSING_CONFIG_PATH },
+        sleep: instantSleep
+      })
+    ).resolves.toBeUndefined()
+
+    expect(calls).toHaveLength(0)
+    // Still the freshest Stop, so the (unsendable) pending entry is cleared.
+    expect(existsSync(pendingPayloadPath(sessionId))).toBe(false)
   })
 })
