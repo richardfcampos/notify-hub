@@ -176,7 +176,14 @@ on first boot).
 | `slack` | `SLACK_WEBHOOK_URL` | Slack app -> Incoming Webhooks -> add to a channel |
 | `discord` | `DISCORD_WEBHOOK_URL` | Server channel settings -> Integrations -> Webhooks |
 | `whatsapp` | `WHATSAPP_PHONE`, `WHATSAPP_APIKEY` | Free personal API via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/) -- message their bot to activate, rate-limited |
+| `voicemonkey` | `VOICEMONKEY_TOKEN`, `VOICEMONKEY_DEVICE` | Makes an Echo device speak the notification out loud via [Voice Monkey](https://voicemonkey.io) -- sign up, link your Echo as a device in their console, create an Announcement-capable "monkey" for it, and copy its API token |
 | `webhook` | `WEBHOOK_URL` | Reference extensibility adapter: POSTs the full notification JSON to any URL you control (Gotify, a custom listener, etc.) |
+
+`voicemonkey` is the practical way to get spoken Alexa notifications: the
+official Amazon Proactive Events API was evaluated separately and only
+supports 8 fixed light/banner schemas -- no arbitrary spoken text -- so
+this third-party webhook is the recommended integration for "Alexa says
+it out loud" use cases.
 
 You can create **any number of named instances per type** -- e.g. an
 `acme-slack` and a `globex-slack`, each with its own webhook URL -- from the
