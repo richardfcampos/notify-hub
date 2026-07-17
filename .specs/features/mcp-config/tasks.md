@@ -1,7 +1,7 @@
 # MCP Config Surface — Tasks
 
 **Spec**: `.specs/features/mcp-config/spec.md`
-**Status**: Implementation complete (C1-C3), pending Verifier
+**Status**: Done — validated (Verifier PASS, iteration 1). 277 tests.
 **Design (inline)**: One shared tool-registration module used by BOTH transports: the existing stdio bin (send tools) and a new Streamable HTTP endpoint mounted on the admin Fastify server at `POST /mcp` (config + send tools). Config tools call the same `config-validation` + repositories the admin PUT route uses (hot-reload for free). Worker verifies the installed `@modelcontextprotocol/sdk@1.29.x` Streamable HTTP server API before writing code — never fabricate.
 
 ## Test Coverage Matrix (inherits project conventions)
