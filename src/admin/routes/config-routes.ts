@@ -12,23 +12,9 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { requiredConfigByChannel } from '../../channels/channel-registry.js'
+import { channelInstanceSchema, getFullConfig, profileRecordSchema } from '../config-service.js'
 import { validateConfigPayload, type ConfigPayload } from '../config-validation.js'
 import type { AdminServerDeps } from '../admin-server-deps.js'
-
-const channelInstanceSchema = z.object({
-  id: z.string().min(1),
-  label: z.string(),
-  type: z.string().min(1),
-  enabled: z.boolean(),
-  config: z.record(z.string())
-})
-
-const profileRecordSchema = z.object({
-  id: z.string().min(1),
-  name: z.string(),
-  token: z.string().min(1),
-  defaultChannels: z.array(z.string())
-})
 
 const configPayloadSchema = z.object({
   channels: z.array(channelInstanceSchema),
@@ -43,10 +29,7 @@ function idsToDelete(existingIds: string[], payloadIds: Iterable<string>): strin
 
 export function registerConfigRoutes(app: FastifyInstance, deps: AdminServerDeps): void {
   app.get('/api/config', async (_request, reply) => {
-    return reply.code(200).send({
-      channels: deps.channelRepo.list(),
-      profiles: deps.profileRepo.list()
-    })
+    return reply.code(200).send(getFullConfig(deps))
   })
 
   app.put('/api/config', async (request, reply) => {
