@@ -55,11 +55,11 @@ The Claude Code hook sends a bare event + message excerpt. The user wants, acros
 ## Requirement Traceability
 | ID | Story | Status |
 | -- | ----- | ------ |
-| HOOK-01 | Rich end payload (times/project/status/headline) | Pending |
-| HOOK-02 | Decision-vs-done heuristic | Pending |
-| HOOK-03 | Needs-input payload | Pending |
-| HOOK-04 | Config-file fallback + toggles + always-cache-start | Pending |
-| HOOK-05 | Git-toplevel project naming | Pending |
+| HOOK-01 | Rich end payload (times/project/status/headline) | Done |
+| HOOK-02 | Decision-vs-done heuristic | Done |
+| HOOK-03 | Needs-input payload | Done |
+| HOOK-04 | Config-file fallback + toggles + always-cache-start | Done |
+| HOOK-05 | Git-toplevel project naming | Done |
 
 ## Success Criteria
 - [ ] Live: finish a real task in any project → phone shows `✅ <project> — concluído` with Início/Fim/duração and headline; a permission prompt → `🙋` push.
