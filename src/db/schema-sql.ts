@@ -27,4 +27,12 @@ CREATE TABLE IF NOT EXISTS profile_channels (
   FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
   FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
 );
+
+-- TEL-02: single-row table holding the anonymous install UUID used as the
+-- telemetry heartbeat's distinctId. Never derived from hostname/IP/MAC;
+-- generated once (crypto.randomUUID()) and reused for the life of the DB.
+CREATE TABLE IF NOT EXISTS telemetry (
+  id TEXT PRIMARY KEY,
+  install_id TEXT NOT NULL
+);
 `

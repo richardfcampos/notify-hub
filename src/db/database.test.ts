@@ -38,7 +38,7 @@ describe('openDatabase', () => {
       .all()
       .map((row) => (row as { name: string }).name)
 
-    expect(tableNames).toEqual(['channels', 'profile_channels', 'profiles'])
+    expect(tableNames).toEqual(['channels', 'profile_channels', 'profiles', 'telemetry'])
     db.close()
   })
 
@@ -95,7 +95,7 @@ describe('openDatabase', () => {
       .all()
       .map((row) => (row as { name: string }).name)
 
-    expect(tableNames).toEqual(['channels', 'profile_channels', 'profiles'])
+    expect(tableNames).toEqual(['channels', 'profile_channels', 'profiles', 'telemetry'])
     db.close()
   })
 })
