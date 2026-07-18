@@ -162,6 +162,14 @@ vars now:
   seed it as a *disabled* instance rather than blocking boot -- fix its
   config in the panel and flip it on.
 
+## Telemetry
+
+notify-hub includes optional, anonymous, usage telemetry that is **off by
+default** on every install -- it only turns on if you explicitly opt in via
+`./scripts/setup-env.sh` or by hand-setting `TELEMETRY_ENABLED=true`. See
+[TELEMETRY.md](./TELEMETRY.md) for the exact field list, why it exists, and
+both ways to opt in or out.
+
 ## Channels
 
 Each row is the config keys a channel **instance** of that type needs (set
