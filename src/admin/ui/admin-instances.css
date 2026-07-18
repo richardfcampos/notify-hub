@@ -48,8 +48,17 @@
   margin: 0;
 }
 
-/* ---- local-tts voice dropdown (LTTS-03) ---- */
-select.voice-select {
+/* ---- local-tts searchable voice combobox (LTTS-05) ---- */
+.combobox-field {
+  width: 100%;
+}
+
+.combobox {
+  position: relative;
+  width: 100%;
+}
+
+.combobox-input {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -60,8 +69,46 @@ select.voice-select {
   width: 100%;
 }
 
-select.voice-select:focus {
+.combobox-input:focus {
   border-color: var(--accent);
+}
+
+.combobox-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.combobox-option {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.combobox-option.highlighted,
+.combobox-option:hover {
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--accent);
+}
+
+.combobox-empty {
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 .field-hint {

@@ -1,15 +1,18 @@
 /**
- * `local-tts` channel-card special case (spec LTTS-03): the LOCAL_TTS_VOICE
- * field renders as a live `<select>` of installed voices instead of free
- * text, sourced from the player through the admin backend proxy (GET
- * /api/local-tts/voices?url=<LOCAL_TTS_URL>) -- eliminates the ambiguous-
- * voice-name bug this feature exists to fix. Falls back to the normal
- * masked text input (same styling as every other field) whenever the
- * player can't be reached, returns zero voices, or LOCAL_TTS_URL is still
- * empty, so the form is never blocked on a live dependency.
+ * `local-tts` channel-card special case (spec LTTS-03/LTTS-05): the
+ * LOCAL_TTS_VOICE field renders as a searchable combobox (type-to-filter
+ * across name/locale/sample, select2-like) over the player's live voice
+ * list, sourced through the admin backend proxy (GET /api/local-tts/voices?
+ * url=<LOCAL_TTS_URL>) -- eliminates both the ambiguous-voice-name bug
+ * (LTTS-03) and the painful unsorted ~180-entry native `<select>` UX
+ * (LTTS-05). Falls back to the normal masked text input (same styling as
+ * every other field) whenever the player can't be reached, returns zero
+ * voices, or LOCAL_TTS_URL is still empty, so the form is never blocked on
+ * a live dependency.
  */
 import { el, clear } from './admin-dom.js'
 import { fieldRow, labelFor } from './admin-field-row.js'
+import { createSearchableCombobox } from './admin-searchable-combobox-dom.js'
 import { fetchLocalTtsVoices } from './admin-api.js'
 import { markEdited } from './admin-state.js'
 
@@ -17,14 +20,16 @@ export const LOCAL_TTS_URL_KEY = 'LOCAL_TTS_URL'
 export const LOCAL_TTS_VOICE_KEY = 'LOCAL_TTS_VOICE'
 
 /**
- * Pure transform: the proxy route's response body -> select option
- * descriptors (`{value, label, selected}`), or `null` when the caller
- * should fall back to a plain text input instead of a dropdown --
+ * Pure transform: the proxy route's response body -> combobox option
+ * descriptors (`{value, label, selected, searchText}`), or `null` when the
+ * caller should fall back to a plain text input instead of a dropdown --
  * `voicesResponse` missing entirely (fetch itself failed), `reachable:
  * false`, or a zero-length voices list all mean "no usable live list".
- * When `currentValue` doesn't match any returned voice's exact name, it is
- * still appended as a manually-added, pre-selected option so an existing
- * (possibly stale) config value is never silently dropped from the form.
+ * `searchText` concatenates name + locale + sample so the combobox can
+ * filter across all three (LTTS-05 AC2). When `currentValue` doesn't match
+ * any returned voice's exact name, it is still appended as a manually-added,
+ * pre-selected option so an existing (possibly stale) config value is never
+ * silently dropped from the form.
  */
 export function buildVoiceOptions(voicesResponse, currentValue) {
   const voices = voicesResponse?.reachable === false ? [] : voicesResponse?.voices
@@ -35,11 +40,12 @@ export function buildVoiceOptions(voicesResponse, currentValue) {
   const options = voices.map((voice) => ({
     value: voice.name,
     label: `${voice.name} (${voice.locale})`,
-    selected: voice.name === currentValue
+    selected: voice.name === currentValue,
+    searchText: `${voice.name} ${voice.locale} ${voice.sample}`
   }))
 
   if (currentValue && !options.some((option) => option.selected)) {
-    options.push({ value: currentValue, label: currentValue, selected: true })
+    options.push({ value: currentValue, label: currentValue, selected: true, searchText: currentValue })
   }
 
   return options
@@ -47,38 +53,37 @@ export function buildVoiceOptions(voicesResponse, currentValue) {
 
 /**
  * Renders the LOCAL_TTS_VOICE row into `outer` (cleared and rebuilt each
- * time) as a `<select>` from `options`. When nothing is selected yet (a
- * freshly added instance with a blank voice), the first option is silently
- * defaulted into `channel.config` -- WITHOUT calling `markEdited()` -- so a
- * Save triggered by some other edit (enabling the channel, editing the
- * label, ...) ships a real voice instead of a blank one; merely resolving
- * this fetch must never by itself flag the form dirty.
+ * time) as a searchable combobox over `options` (LTTS-05). When nothing is
+ * selected yet (a freshly added instance with a blank voice), the first
+ * option is silently defaulted into `channel.config` -- WITHOUT calling
+ * `markEdited()` -- so a Save triggered by some other edit (enabling the
+ * channel, editing the label, ...) ships a real voice instead of a blank
+ * one; merely resolving this fetch must never by itself flag the form
+ * dirty.
  */
-function renderSelect(outer, channel, options, onFieldChange) {
+function renderCombobox(outer, channel, options, onFieldChange) {
   clear(outer)
-  const selectId = `field-${channel.id}-${LOCAL_TTS_VOICE_KEY}`
+  const inputId = `field-${channel.id}-${LOCAL_TTS_VOICE_KEY}`
 
   if (!channel.config[LOCAL_TTS_VOICE_KEY] && options.length > 0) {
     channel.config[LOCAL_TTS_VOICE_KEY] = options[0].value
-    options[0].selected = true
   }
 
-  const select = el(
-    'select',
-    {
-      id: selectId,
-      class: 'voice-select',
-      onchange: (e) => {
-        channel.config[LOCAL_TTS_VOICE_KEY] = e.target.value
-        markEdited()
-        onFieldChange()
-      }
-    },
-    options.map((option) => el('option', { value: option.value, selected: option.selected }, option.label))
-  )
+  outer.appendChild(el('label', { class: 'field-label', for: inputId }, labelFor(LOCAL_TTS_VOICE_KEY)))
+  const fieldContainer = el('div', { class: 'combobox-field' })
+  outer.appendChild(fieldContainer)
 
-  outer.appendChild(el('label', { class: 'field-label', for: selectId }, labelFor(LOCAL_TTS_VOICE_KEY)))
-  outer.appendChild(select)
+  createSearchableCombobox({
+    container: fieldContainer,
+    options,
+    initialValue: channel.config[LOCAL_TTS_VOICE_KEY],
+    inputId,
+    onSelect: (value) => {
+      channel.config[LOCAL_TTS_VOICE_KEY] = value
+      markEdited()
+      onFieldChange()
+    }
+  })
 }
 
 /** Falls back to the normal masked text input; `hintMessage` (optional) explains why, non-blocking. */
@@ -113,7 +118,7 @@ export function renderLocalTtsVoiceField(channel, onFieldChange) {
       renderFallback(outer, channel, onFieldChange, 'player unreachable -- enter voice name manually')
       return
     }
-    renderSelect(outer, channel, options, onFieldChange)
+    renderCombobox(outer, channel, options, onFieldChange)
   }
 
   renderFallback(outer, channel, onFieldChange)
