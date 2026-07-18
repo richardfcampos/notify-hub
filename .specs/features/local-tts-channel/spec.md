@@ -70,3 +70,21 @@ Alexa integration (official API and third-party bridges) all carry cost, request
 - [ ] Live: add a `local-tts` instance in the panel (voice picked from real dropdown), Send test → the Mac's speakers actually speak the message.
 - [ ] Player unit-tested with mocked `execFile` (no dependency on a real Mac to run the test suite in CI); adapter unit-tested with `FakeHttpClient`.
 - [ ] Player restarts automatically on login/reboot via launchd.
+
+---
+
+## Amendment 2 — Searchable voice combobox (2026-07-18)
+
+User feedback (verbatim): "use meio que algo parecido com um select2, ta feio esse dropdown Local Tts Voice e com um ux horrivel". A native `<select>` with ~180 unsorted-by-relevance voices (many near-duplicate names across locales, e.g. 14 "Grandma"s) is genuinely painful — no way to filter by typing "portu" to jump to Portuguese voices.
+
+### LTTS-05: Searchable voice combobox ⭐
+1. WHEN the operator clicks/focuses the `LOCAL_TTS_VOICE` field THEN a text input SHALL appear with a dropdown panel of matching voices below it, instead of a native `<select>`.
+2. WHEN the operator types THEN the panel SHALL filter to voices whose name, locale, or sample text contains the typed substring (case-insensitive), live as they type.
+3. WHEN the operator clicks or keyboard-selects (arrow keys + Enter) an option THEN that voice's exact `name` SHALL become the field's value (same underlying contract as before — no change to what's sent to the adapter).
+4. WHEN Escape is pressed or the operator clicks outside THEN the panel SHALL close without changing the value.
+5. **No new dependency** — built as plain HTML/CSS/JS matching the existing admin UI's zero-dependency, no-CDN convention (explicitly NOT jQuery/Select2 itself).
+6. The player-unreachable text-input fallback (LTTS-03 AC2) is unchanged.
+
+| ID | Story | Status |
+| -- | ----- | ------ |
+| LTTS-05 | Searchable voice combobox (no new dependency) | Pending |

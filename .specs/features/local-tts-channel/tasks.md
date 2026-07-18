@@ -46,3 +46,13 @@ Phase 3 (docs + live smoke): L4
 
 ## Validation
 Verifier runs after L4 (author ≠ verifier): spec-anchored LTTS-01..04 + discrimination sensor (esp. execFile injection-safety, loopback bind, dropdown fallback-on-unreachable); writes `.specs/features/local-tts-channel/validation.md`. Live audio cannot be re-verified by a text-only Verifier — it inspects the reported live-smoke evidence (logs / HTTP traces) instead.
+
+## Amendment 2 tasks
+
+### L5: Searchable voice combobox
+**What**: New `src/admin/ui/admin-searchable-combobox.js` (generic, reusable): a small vanilla-JS combobox factory — text input + absolutely-positioned dropdown panel, live substring filtering (case-insensitive across `name`/`locale`/`sample`), keyboard nav (ArrowUp/Down, Enter, Escape), click-outside-to-close, matches existing dark theme (new rules in `admin-instances.css` or a sibling stylesheet). Pure filter logic exported as a standalone testable function (e.g. `filterVoiceOptions(voices, query)`). Wire into `admin-local-tts.js`/`admin-channels.js`, replacing the native `<select>` for `LOCAL_TTS_VOICE` — same fallback-to-plain-text-input behavior when the player is unreachable (LTTS-03 AC2, unchanged). Unit tests: filter logic (empty query → all; substring match across all 3 fields; case-insensitive; no matches → empty list); combobox behavior tests where feasible without a full DOM/browser (keep DOM-light per the project's existing UI-test conventions — see `admin-defaults.test.js` for the pure-helper style already used elsewhere).
+**Requirement**: LTTS-05 · **Tests**: unit (filter logic) + existing e2e/build gates · **Gate**: full
+**Commit**: `feat(admin): searchable voice combobox for local-tts`
+
+## Validation (Amendment 2)
+Verifier runs after L5 (author ≠ verifier): spec-anchored LTTS-05 + discrimination sensor; appends to `.specs/features/local-tts-channel/validation.md`.
