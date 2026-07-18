@@ -1,7 +1,7 @@
 # Anonymous Opt-In Telemetry — Tasks
 
 **Spec**: `.specs/features/telemetry/spec.md`
-**Status**: In Progress
+**Status**: ALL PHASES DONE — pending Verifier
 **Design (inline)**: `src/telemetry/` module — `TelemetryClient` port-style wrapper (mirrors the project's Ports & Adapters convention) around `posthog-node`, injectable for tests (a `FakeTelemetryClient` like every other external seam). Wired into `src/bin/api.ts` and `src/bin/worker.ts` boot sequence as a fire-and-forget, try/caught call — never blocks or fails boot. Anonymous UUID persisted via a new tiny SQLite table, read/written through a small repository following the existing `ChannelRepository`/`ProfileRepository` pattern.
 
 ## Test Coverage Matrix
@@ -39,12 +39,12 @@ Unit tests: `isTelemetryEnabled` truth table (unset→false, enabled+no DNT→tr
 **Requirement**: TEL-03 · **Tests**: unit/integration (boot-never-blocks) · **Gate**: full
 **Commit**: `feat(core): wire telemetry heartbeat into api and worker boot`
 
-### T4: Setup-env.sh consent prompt + .env.example
+### T4: Setup-env.sh consent prompt + .env.example ✅
 **What**: One new prompted block in `scripts/setup-env.sh` (mirroring its existing `ask`/`ask_secret` helper style): print the exact field list (version, channel types enabled, platform, anonymous install id -- no instance names, no credentials, no message content), then `ask "Enable anonymous usage telemetry? (y/N)"` defaulting to N/disabled; write `TELEMETRY_ENABLED=true`/`false` accordingly (never write `DO_NOT_TRACK` -- that's the user's own separate global env convention, not something this script sets). `.env.example`: add a `# --- Telemetry (opt-in, OFF by default) ---` block documenting `TELEMETRY_ENABLED`, `DO_NOT_TRACK`, `POSTHOG_API_KEY` (comment: "leave unset to use the project's own aggregate telemetry endpoint if you opt in; set your own PostHog key to redirect telemetry to a project you own instead"), with the exact same field list inline.
 **Requirement**: TEL-04 · **Tests**: none (shell script) · **Gate**: build
 **Commit**: `feat(scripts): telemetry consent prompt in guided setup`
 
-### T5: TELEMETRY.md + README link
+### T5: TELEMETRY.md + README link ✅
 **What**: New `TELEMETRY.md` at repo root: what's collected (the exact enumerated list, matching the code -- link the exact source file/line so it can never silently drift out of sync with reality), why (adoption visibility for an OSS maintainer), where (PostHog Cloud, EU region, link to PostHog's privacy policy), the write-only-key caveat (a leaked/public key can only write junk events, never read real data -- documented honestly per the research), both disable mechanisms. README: one short paragraph + link, explicitly stating "opt-in, disabled by default."
 **Requirement**: TEL-05 · **Tests**: none · **Gate**: build
 **Commit**: `docs: telemetry disclosure and README link`
