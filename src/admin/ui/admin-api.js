@@ -34,3 +34,5 @@ export const saveConfig = (cfg) => request('PUT', '/api/config', cfg)
 export const fetchStatus = () => request('GET', '/api/status')
 export const fetchChannelTypes = () => request('GET', '/api/channel-types')
 export const sendTest = (channelId) => request('POST', '/api/test-send', { channelId })
+/** Proxies to the local-tts player's `/voices` through the admin backend (never a direct browser fetch -- CORS/mixed-content). */
+export const fetchLocalTtsVoices = (playerUrl) => request('GET', `/api/local-tts/voices?url=${encodeURIComponent(playerUrl)}`)

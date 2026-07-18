@@ -9,67 +9,38 @@
  * focus.
  */
 import { el, clear } from './admin-dom.js'
-import { ICON_EYE, ICON_EYE_OFF, ICON_COPY, ICON_CHECK, ICON_CROSS, ICON_SPINNER, ICON_TRASH } from './admin-icons.js'
+import { ICON_CHECK, ICON_CROSS, ICON_SPINNER, ICON_TRASH } from './admin-icons.js'
 import { markEdited } from './admin-state.js'
 import { sendTest } from './admin-api.js'
-import { showToast } from './admin-toast.js'
 import { missingRequiredKeys } from './admin-channel-completeness.js'
+import { fieldRow, labelFor } from './admin-field-row.js'
+import { LOCAL_TTS_URL_KEY, LOCAL_TTS_VOICE_KEY, renderLocalTtsVoiceField } from './admin-local-tts.js'
 
-/** `NTFY_TOPIC` -> `Ntfy Topic` -- readable label for a raw config key. */
-function labelFor(key) {
-  return key
-    .split('_')
-    .map((word) => word[0] + word.slice(1).toLowerCase())
-    .join(' ')
-}
+/**
+ * One field-row element per required config key, in order. Every type
+ * renders every key through the shared masked/reveal/copy `fieldRow` --
+ * except `local-tts`, whose LOCAL_TTS_VOICE key renders as a live voice
+ * dropdown instead (spec LTTS-03), and whose LOCAL_TTS_URL key re-triggers
+ * that dropdown's fetch on blur so picking the player URL first, then
+ * getting a live voice list, works naturally.
+ */
+function fieldRowsFor(channel, requiredConfig, onFieldChange) {
+  if (channel.type !== 'local-tts') {
+    return requiredConfig.map((key) => fieldRow(channel, key, onFieldChange))
+  }
 
-function fieldRow(channel, key, onFieldChange) {
-  const input = el('input', {
-    type: 'password',
-    id: `field-${channel.id}-${key}`,
-    value: channel.config[key] ?? '',
-    autocomplete: 'off',
-    spellcheck: 'false',
-    oninput: (e) => {
-      channel.config[key] = e.target.value
-      markEdited()
-      onFieldChange()
+  const voiceField = { refetch: () => {} }
+  return requiredConfig.map((key) => {
+    if (key === LOCAL_TTS_VOICE_KEY) {
+      const { element, refetch } = renderLocalTtsVoiceField(channel, onFieldChange)
+      voiceField.refetch = refetch
+      return element
     }
-  })
-
-  const eyeBtn = el('button', {
-    class: 'icon-btn',
-    type: 'button',
-    'aria-pressed': 'false',
-    'aria-label': `Reveal ${key}`,
-    html: ICON_EYE,
-    onclick: (e) => {
-      const revealed = input.type === 'text'
-      input.type = revealed ? 'password' : 'text'
-      e.currentTarget.setAttribute('aria-pressed', String(!revealed))
-      e.currentTarget.innerHTML = revealed ? ICON_EYE : ICON_EYE_OFF
+    if (key === LOCAL_TTS_URL_KEY) {
+      return fieldRow(channel, key, onFieldChange, () => voiceField.refetch())
     }
+    return fieldRow(channel, key, onFieldChange)
   })
-
-  const copyBtn = el('button', {
-    class: 'icon-btn',
-    type: 'button',
-    'aria-label': `Copy ${key}`,
-    html: ICON_COPY,
-    onclick: async () => {
-      try {
-        await navigator.clipboard.writeText(input.value)
-        showToast(`${key} copied`, 'info')
-      } catch {
-        showToast('copy failed -- clipboard unavailable', 'error')
-      }
-    }
-  })
-
-  return el('div', { class: 'field-row' }, [
-    el('label', { class: 'field-label', for: input.id }, labelFor(key)),
-    el('div', { class: 'field-input-group' }, [input, eyeBtn, copyBtn])
-  ])
 }
 
 function resultChip(state, detail) {
@@ -93,7 +64,7 @@ function renderCard(channel, requiredConfig, callbacks) {
   const fieldsWrap = el(
     'div',
     { class: `fields-wrap${channel.enabled ? '' : ' collapsed'}` },
-    requiredConfig.map((key) => fieldRow(channel, key, renderWarning))
+    fieldRowsFor(channel, requiredConfig, renderWarning)
   )
 
   const labelInput = el('input', {

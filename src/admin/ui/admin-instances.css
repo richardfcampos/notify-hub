@@ -48,6 +48,33 @@
   margin: 0;
 }
 
+/* ---- local-tts voice dropdown (LTTS-03) ---- */
+select.voice-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+select.voice-select:focus {
+  border-color: var(--accent);
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  min-height: 1em;
+}
+
+.field-hint:empty {
+  margin: 0;
+}
+
 /* ---- Add-channel inline form ---- */
 .add-channel-form {
   margin: 10px 0 16px;

@@ -17,6 +17,7 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import { registerChannelTypesRoute } from './routes/channel-types-route.js'
 import { registerConfigRoutes } from './routes/config-routes.js'
+import { registerLocalTtsVoicesRoute } from './routes/local-tts-voices-route.js'
 import { registerMcpRoute } from './routes/mcp-route.js'
 import { registerStatusRoute } from './routes/status-route.js'
 import { registerTestSendRoute } from './routes/test-send-route.js'
@@ -30,6 +31,7 @@ export function buildAdminServer(deps: AdminServerDeps): FastifyInstance {
 
   registerConfigRoutes(app, deps)
   registerChannelTypesRoute(app, deps)
+  registerLocalTtsVoicesRoute(app, deps)
   registerStatusRoute(app, deps)
   registerTestSendRoute(app, deps)
   registerMcpRoute(app, deps)
