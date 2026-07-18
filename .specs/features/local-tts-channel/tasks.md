@@ -1,7 +1,7 @@
 # Local TTS Channel — Tasks
 
 **Spec**: `.specs/features/local-tts-channel/spec.md`
-**Status**: In Progress
+**Status**: In Progress (Phase 1/3 done: player + adapter, 374 tests)
 **Design (inline)**: Player = standalone Node.js host process (`clients/local-tts-player/`, zero/minimal deps, mirrors `clients/claude-code/notify-hook.mjs`'s "thin host client" pattern), loopback-only, using `child_process.execFile` (never shell string interpolation) for both listing voices and speaking. notify-hub gets a plain new channel type (`local-tts`) via the existing type-keyed registry — zero core changes beyond the adapter file + one registry line. Admin UI gets one hardcoded special case (not a generic framework) for the voice field.
 
 ## Test Coverage Matrix
@@ -23,15 +23,16 @@ Phase 2 (admin dropdown):    L3
 Phase 3 (docs + live smoke): L4
 ```
 
-### L1: Local TTS player service
+### L1: Local TTS player service ✅
 **What**: `clients/local-tts-player/local-tts-server.mjs` (zero-dep Node http server): `GET /voices` — `execFile('say', ['-v', '?'])`, parse each line `<name...>  <locale>    # <sample>` into `{name, locale, sample}` (name = everything before the locale code, trimmed — handles multi-word names like "Grandma (Portuguese (Brazil))"); `POST /speak` — body `{voice, text}`, `execFile('say', ['-v', voice || DEFAULT_VOICE, text])` (array args — text is NEVER concatenated into a shell string), respond 202 immediately (fire-and-forget, don't block the HTTP response on `say` finishing — a long announcement shouldn't hold the connection). Binds `127.0.0.1:<PORT env, default 8082>`. `clients/local-tts-player/local-tts-server.test.mjs`: parsing test against a captured real sample of `say -v '?'` output (multi-language, includes duplicate "Grandma" entries — assert each is a distinct, disambiguated entry); speak test with a fake/injected execFile seam asserting exact argv array (including a text containing `"; rm -rf /"` style content, asserting it lands as a single argv element, never shell-interpreted); unknown-voice fallback test; bind-address test.
 **Requirement**: LTTS-01 · **Tests**: unit · **Gate**: quick
-**Commit**: `feat(client): local tts player service`
+**Commit**: `feat(client): local tts player service` (c8f6db1)
+**Note**: parser regex verified live against the full real `say -v '?'` output on this machine (180 voices, all parsed, 14 distinct Grandma entries); broadened the locale pattern to also accept UN M49 numeric region codes (e.g. Arabic `ar_001`, no single country) discovered during that live check — regression test added.
 
-### L2: `local-tts` channel adapter
+### L2: `local-tts` channel adapter ✅
 **What**: `src/channels/adapters/local-tts-channel.ts` (`LocalTtsChannel implements NotificationChannel`, POSTs `{voice: cfg.LOCAL_TTS_VOICE, text: "${title}. ${message}"}` to `${cfg.LOCAL_TTS_URL}/speak` via injected `HttpClient`) + `localTtsRegistryEntry` (`requiredConfig: ['LOCAL_TTS_URL', 'LOCAL_TTS_VOICE']`, no maxLength). Register one line in `src/channels/channel-registry.ts`. `local-tts-channel.test.ts` mirrors the discord/slack adapter test style (exact request via FakeHttpClient, non-2xx throws).
 **Requirement**: LTTS-02 · **Tests**: unit · **Gate**: quick
-**Commit**: `feat(channels): local tts (macOS say) channel adapter`
+**Commit**: `feat(channels): local tts (macOS say) channel adapter` (deddc12)
 
 ### L3: Admin voice dropdown
 **What**: `src/admin/routes/local-tts-voices-route.ts` — `GET /api/local-tts/voices?url=<player-url>` proxies to `<url>/voices` via the admin's `HttpClient`, returns the list or `{voices: [], reachable: false}` on failure (never 500s). Admin UI: in `admin-channels.js`, special-case `type === 'local-tts'`: render the `LOCAL_TTS_VOICE` field as `<select>` populated by fetching the proxy route (using the card's current `LOCAL_TTS_URL` value — re-fetch on blur/change of that field); on fetch failure, fall back to the normal masked text input. Extract the "build select options from a voices response" logic as a small pure/testable helper (`admin-local-tts.js` or similar).
