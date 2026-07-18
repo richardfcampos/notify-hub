@@ -177,6 +177,7 @@ on first boot).
 | `discord` | `DISCORD_WEBHOOK_URL` | Server channel settings -> Integrations -> Webhooks |
 | `whatsapp` | `WHATSAPP_PHONE`, `WHATSAPP_APIKEY` | Free personal API via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/) -- message their bot to activate, rate-limited |
 | `voicemonkey` | `VOICEMONKEY_TOKEN`, `VOICEMONKEY_DEVICE` | Makes an Echo device speak the notification out loud via [Voice Monkey](https://voicemonkey.io) -- sign up, link your Echo as a device in their console, create an Announcement-capable "monkey" for it, and copy its API token |
+| `local-tts` | `LOCAL_TTS_URL`, `LOCAL_TTS_VOICE` | Speaks the notification out loud through a speaker on a host machine (e.g. this Mac) via macOS `say` -- run the standalone player first, see [`clients/local-tts-player/install.md`](./clients/local-tts-player/install.md); `LOCAL_TTS_VOICE` renders as a live dropdown of installed voices in the panel once `LOCAL_TTS_URL` is filled in |
 | `webhook` | `WEBHOOK_URL` | Reference extensibility adapter: POSTs the full notification JSON to any URL you control (Gotify, a custom listener, etc.) |
 
 `voicemonkey` is the practical way to get spoken Alexa notifications: the
@@ -196,6 +197,23 @@ interface (one `send()` method) in `src/channels/adapters/`, export a
 `ChannelRegistryEntry` (factory + required config keys), and add one line to
 `src/channels/channel-registry.ts`. No other core changes needed -- the
 admin panel picks up new types automatically via `GET /api/channel-types`.
+
+## Local TTS (your own speaker)
+
+`local-tts` speaks a notification out loud through a speaker attached to a
+host machine you own (e.g. this Mac), using macOS's built-in `say` command
+-- zero cost, zero request quota, zero Amazon/third-party account
+dependency (contrast with the `voicemonkey` row above, which needs an
+account, a linked Echo device, and is rate-limited).
+
+The catch: Docker Desktop for Mac gives containers no access to the host's
+CoreAudio subsystem, so `say` can't run inside the `worker` container. A
+small standalone player (`clients/local-tts-player/`) runs directly on the
+host instead, outside Docker (auto-started via `launchd`, see
+[`clients/local-tts-player/install.md`](./clients/local-tts-player/install.md)),
+and notify-hub's worker reaches it over
+`http://host.docker.internal:8082` -- the standard Docker Desktop for Mac
+mechanism for routing a container back to a host-bound loopback service.
 
 ## Claude Code hook
 

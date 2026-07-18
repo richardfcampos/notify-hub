@@ -1,7 +1,7 @@
 # Local TTS Channel — Tasks
 
 **Spec**: `.specs/features/local-tts-channel/spec.md`
-**Status**: In Progress (Phase 2/3 done: player + adapter + admin voice dropdown, 387 tests)
+**Status**: ALL PHASES DONE — pending Verifier
 **Design (inline)**: Player = standalone Node.js host process (`clients/local-tts-player/`, zero/minimal deps, mirrors `clients/claude-code/notify-hook.mjs`'s "thin host client" pattern), loopback-only, using `child_process.execFile` (never shell string interpolation) for both listing voices and speaking. notify-hub gets a plain new channel type (`local-tts`) via the existing type-keyed registry — zero core changes beyond the adapter file + one registry line. Admin UI gets one hardcoded special case (not a generic framework) for the voice field.
 
 ## Test Coverage Matrix
@@ -39,9 +39,9 @@ Phase 3 (docs + live smoke): L4
 **Requirement**: LTTS-03 · **Tests**: e2e (route, 6 cases) + unit (UI helper, 7 cases) · **Gate**: full (387 tests, +13 vs 374)
 **Commit**: `feat(admin): local tts voice dropdown` (bd72fd4)
 
-### L4: launchd + docs + live smoke
-**What**: `clients/local-tts-player/com.notify-hub.local-tts-player.plist` (launchd, `RunAtLoad` + `KeepAlive`, logs to a file) + `clients/local-tts-player/install.md` (load with `launchctl load`, verify with `curl 127.0.0.1:8082/voices`). README: new channel row + short "Local TTS (your own speaker)" section explaining the Docker-can't-reach-host-audio constraint and why the player runs outside Docker. LIVE SMOKE (real audio, on this Mac): start the player, rebuild admin+worker to pick up the new channel type, add a `local-tts` instance in the panel with a real dropdown-picked voice (e.g. Luciana), Send test → confirm audible speech, then a real `POST /notify` end-to-end.
-**Requirement**: LTTS-04 · **Tests**: none · **Gate**: build + full + live audio confirmed
+### L4: launchd + docs + live smoke ✅
+**What**: `clients/local-tts-player/com.notify-hub.local-tts-player.plist` (launchd, `RunAtLoad` + `KeepAlive`, logs to a file) + `clients/local-tts-player/install.md` (load with `launchctl load`, verify with `curl 127.0.0.1:8082/voices`). README: new channel row + short "Local TTS (your own speaker)" section explaining the Docker-can't-reach-host-audio constraint and why the player runs outside Docker. LIVE SMOKE (real audio, on this Mac): started the player (confirmed `/voices` returns 180 real voices incl. Luciana), rebuilt api/worker/admin (`docker compose up -d --build`, all healthy), confirmed `host.docker.internal:8082` reachable from inside the `worker` container (`fetch(...).then(r=>r.status)` → `200`), added a `local-tts` instance via `GET`+`PUT /api/config` (merged into existing channels/profiles, nothing dropped) with `LOCAL_TTS_URL=http://host.docker.internal:8082`/`LOCAL_TTS_VOICE=Luciana`, confirmed the `GET /api/local-tts/voices?url=...` proxy route returns real voices from the admin container. Live audio confirmed twice: `POST /api/test-send {channelId:'local-tts'}` → `{"ok":true,"detail":"sent"}`, then a real `POST /notify` (title "notify-hub", Portuguese message) targeting `channels:['local-tts']` → worker log `"sending notification"` → `"notification sent"` for channel `local-tts` both times. Instance left enabled in the DB; player process left running.
+**Requirement**: LTTS-04 · **Tests**: none · **Gate**: build + full (387/387) + live audio confirmed
 **Commit**: `docs(client): local tts player launchd and setup`
 
 ## Validation

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd user agent for the local-tts player (spec LTTS-04). Runs the
+  companion HTTP service directly on this Mac (NOT in Docker -- Docker
+  Desktop for Mac has no CoreAudio access from inside a container), so
+  notify-hub's worker can reach macOS `say` via http://host.docker.internal:8082.
+
+  BEFORE loading this file you MUST edit the ProgramArguments path below:
+  replace /ABSOLUTE/PATH/TO/notify-hub with the actual absolute path this
+  repo was cloned to on this machine (find it with
+  `realpath clients/local-tts-player/local-tts-server.mjs` from the repo
+  root). launchd plists cannot expand `~`, `$HOME`, or relative paths, so
+  a literal absolute path is required here.
+
+  See install.md in this directory for the full load/verify/unload steps.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.notify-hub.local-tts-player</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/node</string>
+		<string>/ABSOLUTE/PATH/TO/notify-hub/clients/local-tts-player/local-tts-server.mjs</string>
+	</array>
+
+	<!-- Start immediately on `launchctl load` and again on every login/reboot. -->
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Restart automatically if the process crashes or is killed. -->
+	<key>KeepAlive</key>
+	<true/>
+
+	<!--
+	  Overridable without editing local-tts-server.mjs. PORT must match
+	  whatever notify-hub's LOCAL_TTS_URL config points at (default 8082).
+	  DEFAULT_VOICE must be one of the EXACT names from GET /voices.
+	-->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PORT</key>
+		<string>8082</string>
+		<key>DEFAULT_VOICE</key>
+		<string>Luciana</string>
+	</dict>
+
+	<!--
+	  ~/Library/Logs is the conventional macOS location for a per-user
+	  agent's logs; launchd resolves ~ for StandardOutPath/StandardErrorPath
+	  (unlike ProgramArguments), so this is safe to leave as-is. Both streams
+	  share one file -- this is a low-volume service, no rotation needed.
+	-->
+	<key>StandardOutPath</key>
+	<string>~/Library/Logs/notify-hub-local-tts-player.log</string>
+	<key>StandardErrorPath</key>
+	<string>~/Library/Logs/notify-hub-local-tts-player.log</string>
+
+	<key>WorkingDirectory</key>
+	<string>/ABSOLUTE/PATH/TO/notify-hub/clients/local-tts-player</string>
+</dict>
+</plist>
