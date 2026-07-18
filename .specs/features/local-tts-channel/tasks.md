@@ -1,7 +1,7 @@
 # Local TTS Channel — Tasks
 
 **Spec**: `.specs/features/local-tts-channel/spec.md`
-**Status**: ALL PHASES DONE — pending Verifier
+**Status**: Done — validated (Verifier PASS, iteration 1). 387 tests.
 **Design (inline)**: Player = standalone Node.js host process (`clients/local-tts-player/`, zero/minimal deps, mirrors `clients/claude-code/notify-hook.mjs`'s "thin host client" pattern), loopback-only, using `child_process.execFile` (never shell string interpolation) for both listing voices and speaking. notify-hub gets a plain new channel type (`local-tts`) via the existing type-keyed registry — zero core changes beyond the adapter file + one registry line. Admin UI gets one hardcoded special case (not a generic framework) for the voice field.
 
 ## Test Coverage Matrix
