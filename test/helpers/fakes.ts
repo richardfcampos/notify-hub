@@ -1,8 +1,8 @@
 /**
  * Shared test doubles for the mockable seams (HttpClient, MailTransport,
- * Clock, Logger, ChannelRepository, ProfileRepository, CommandRunner). Used
- * by channel-builder/decorator/adapter and admin-panel unit/e2e tests --
- * never imported by production code.
+ * Clock, Logger, ChannelRepository, ProfileRepository, CommandRunner,
+ * TelemetryPort). Used by channel-builder/decorator/adapter and admin-panel
+ * unit/e2e tests -- never imported by production code.
  */
 import type {
   Clock,
@@ -14,6 +14,7 @@ import type {
 } from '../../src/core/ports.js'
 import type { ChannelInstance, ProfileRecord } from '../../src/core/types.js'
 import type { CommandResult, CommandRunner } from '../../src/admin/command-runner.js'
+import type { HeartbeatProperties, TelemetryPort } from '../../src/telemetry/telemetry-port.js'
 
 export interface RecordedRequest {
   method: string
@@ -228,6 +229,23 @@ export class FakeProfileRepository implements ProfileRepository {
     const profile = this.store.get(profileId)
     if (profile) {
       profile.defaultChannels = [...channelIds]
+    }
+  }
+}
+
+/** Records every sendHeartbeat call; `throwOnSend` scripts a rejection for every call after it's set. */
+export class FakeTelemetryClient implements TelemetryPort {
+  readonly calls: HeartbeatProperties[] = []
+  private error: Error | null = null
+
+  throwOnSend(error: Error): void {
+    this.error = error
+  }
+
+  async sendHeartbeat(props: HeartbeatProperties): Promise<void> {
+    this.calls.push({ ...props, channelTypesEnabled: [...props.channelTypesEnabled] })
+    if (this.error) {
+      throw this.error
     }
   }
 }
