@@ -209,11 +209,19 @@ account, a linked Echo device, and is rate-limited).
 The catch: Docker Desktop for Mac gives containers no access to the host's
 CoreAudio subsystem, so `say` can't run inside the `worker` container. A
 small standalone player (`clients/local-tts-player/`) runs directly on the
-host instead, outside Docker (auto-started via `launchd`, see
-[`clients/local-tts-player/install.md`](./clients/local-tts-player/install.md)),
-and notify-hub's worker reaches it over
+host instead, outside Docker -- either as a plain foreground process
+(fast path, no persistence) or via a `launchd` agent for auto-start on
+login/reboot; see
+[`clients/local-tts-player/install.md`](./clients/local-tts-player/install.md)
+for both paths, plus a **known, unresolved troubleshooting caveat**: the
+`launchd` agent has failed to actually start (`EX_CONFIG`, exit 78) on at
+least one real machine in this project's own history, for a cause not yet
+confirmed. notify-hub's worker reaches the player over
 `http://host.docker.internal:8082` -- the standard Docker Desktop for Mac
-mechanism for routing a container back to a host-bound loopback service.
+mechanism for routing a container back to a host-bound loopback service
+(this only works when the player and the `docker compose` stack are on
+the *same* machine -- see the install guide for why a remote speaker isn't
+supported out of the box).
 
 ## Claude Code hook
 
