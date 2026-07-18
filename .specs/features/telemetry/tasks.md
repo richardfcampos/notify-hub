@@ -1,7 +1,7 @@
 # Anonymous Opt-In Telemetry — Tasks
 
 **Spec**: `.specs/features/telemetry/spec.md`
-**Status**: ALL PHASES DONE — pending Verifier
+**Status**: Done — validated (Verifier PASS, iteration 2, unconditional). 439 tests.
 **Design (inline)**: `src/telemetry/` module — `TelemetryClient` port-style wrapper (mirrors the project's Ports & Adapters convention) around `posthog-node`, injectable for tests (a `FakeTelemetryClient` like every other external seam). Wired into `src/bin/api.ts` and `src/bin/worker.ts` boot sequence as a fire-and-forget, try/caught call — never blocks or fails boot. Anonymous UUID persisted via a new tiny SQLite table, read/written through a small repository following the existing `ChannelRepository`/`ProfileRepository` pattern.
 
 ## Test Coverage Matrix
