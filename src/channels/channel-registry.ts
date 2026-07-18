@@ -8,6 +8,7 @@
 import type { ChannelRegistryEntry } from '../core/types.js'
 import { discordRegistryEntry } from './adapters/discord-channel.js'
 import { emailRegistryEntry } from './adapters/email-channel.js'
+import { localTtsRegistryEntry } from './adapters/local-tts-channel.js'
 import { ntfyRegistryEntry } from './adapters/ntfy-channel.js'
 import { slackRegistryEntry } from './adapters/slack-channel.js'
 import { telegramRegistryEntry } from './adapters/telegram-channel.js'
@@ -23,7 +24,8 @@ export const channelRegistry: Record<string, ChannelRegistryEntry> = {
   discord: discordRegistryEntry,
   whatsapp: whatsappRegistryEntry,
   voicemonkey: voicemonkeyRegistryEntry,
-  webhook: webhookRegistryEntry
+  webhook: webhookRegistryEntry,
+  'local-tts': localTtsRegistryEntry
 }
 
 /** channel name -> required env keys, derived from the registry above. */
