@@ -1,7 +1,7 @@
 # Local TTS Channel — Tasks
 
 **Spec**: `.specs/features/local-tts-channel/spec.md`
-**Status**: In Progress (Phase 1/3 done: player + adapter, 374 tests)
+**Status**: In Progress (Phase 2/3 done: player + adapter + admin voice dropdown, 387 tests)
 **Design (inline)**: Player = standalone Node.js host process (`clients/local-tts-player/`, zero/minimal deps, mirrors `clients/claude-code/notify-hook.mjs`'s "thin host client" pattern), loopback-only, using `child_process.execFile` (never shell string interpolation) for both listing voices and speaking. notify-hub gets a plain new channel type (`local-tts`) via the existing type-keyed registry — zero core changes beyond the adapter file + one registry line. Admin UI gets one hardcoded special case (not a generic framework) for the voice field.
 
 ## Test Coverage Matrix
@@ -34,10 +34,10 @@ Phase 3 (docs + live smoke): L4
 **Requirement**: LTTS-02 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(channels): local tts (macOS say) channel adapter` (deddc12)
 
-### L3: Admin voice dropdown
-**What**: `src/admin/routes/local-tts-voices-route.ts` — `GET /api/local-tts/voices?url=<player-url>` proxies to `<url>/voices` via the admin's `HttpClient`, returns the list or `{voices: [], reachable: false}` on failure (never 500s). Admin UI: in `admin-channels.js`, special-case `type === 'local-tts'`: render the `LOCAL_TTS_VOICE` field as `<select>` populated by fetching the proxy route (using the card's current `LOCAL_TTS_URL` value — re-fetch on blur/change of that field); on fetch failure, fall back to the normal masked text input. Extract the "build select options from a voices response" logic as a small pure/testable helper (`admin-local-tts.js` or similar).
-**Requirement**: LTTS-03 · **Tests**: e2e (route) + unit (UI helper) · **Gate**: full
-**Commit**: `feat(admin): local tts voice dropdown`
+### L3: Admin voice dropdown ✅
+**What**: `src/admin/routes/local-tts-voices-route.ts` — `GET /api/local-tts/voices?url=<player-url>` proxies to `<url>/voices` via the admin's `HttpClient`, wraps the player's bare array under `{voices, reachable:true}`, degrades to `{voices: [], reachable: false}` on any failure (missing HttpClient, network error, non-2xx, bad JSON) -- never 500s; missing `url` query param 400s naming it. Admin UI: `admin-channels.js` special-cases `type === 'local-tts'` (`fieldRowsFor`) so `LOCAL_TTS_VOICE` renders as `<select>` (via new `admin-local-tts.js`) populated by fetching the proxy route with the card's current `LOCAL_TTS_URL` value, re-fetching on that field's blur; falls back to the normal masked text input (extracted into `admin-field-row.js`, shared with the generic per-key renderer) on fetch failure/unreachable/zero voices, with a non-blocking inline hint. The "voices response -> select options" transform is extracted as a pure, unit-tested helper (`buildVoiceOptions` in `admin-local-tts.js`) that also preserves an unmatched existing voice value as a manually-added option instead of silently dropping it.
+**Requirement**: LTTS-03 · **Tests**: e2e (route, 6 cases) + unit (UI helper, 7 cases) · **Gate**: full (387 tests, +13 vs 374)
+**Commit**: `feat(admin): local tts voice dropdown` (bd72fd4)
 
 ### L4: launchd + docs + live smoke
 **What**: `clients/local-tts-player/com.notify-hub.local-tts-player.plist` (launchd, `RunAtLoad` + `KeepAlive`, logs to a file) + `clients/local-tts-player/install.md` (load with `launchctl load`, verify with `curl 127.0.0.1:8082/voices`). README: new channel row + short "Local TTS (your own speaker)" section explaining the Docker-can't-reach-host-audio constraint and why the player runs outside Docker. LIVE SMOKE (real audio, on this Mac): start the player, rebuild admin+worker to pick up the new channel type, add a `local-tts` instance in the panel with a real dropdown-picked voice (e.g. Luciana), Send test → confirm audible speech, then a real `POST /notify` end-to-end.
