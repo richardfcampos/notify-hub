@@ -23,18 +23,18 @@ Phase 1 (core + wiring):  T1 → T2 → T3
 Phase 2 (consent + docs): T4 → T5
 ```
 
-### T1: Install-id repository (SQLite)
+### T1: Install-id repository (SQLite) ✅
 **What**: Extend `src/db/schema-sql.ts` with `CREATE TABLE IF NOT EXISTS telemetry (id TEXT PRIMARY KEY DEFAULT 'singleton', install_id TEXT NOT NULL)` (or simplest equivalent single-row table). `src/db/sqlite-telemetry-repository.ts`: `getOrCreateInstallId(db): string` -- reads existing row; if absent, generates `crypto.randomUUID()`, inserts, returns it. Unit tests (temp-file SQLite): first call creates + persists; second call (new connection, same file) returns the SAME id.
 **Requirement**: TEL-02 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(telemetry): persisted anonymous install id`
 
-### T2: Telemetry client wrapper
+### T2: Telemetry client wrapper ✅
 **What**: `npm i posthog-node`. `src/telemetry/telemetry-client.ts`: a `TelemetryPort` interface (`sendHeartbeat(props): Promise<void>`) + `PostHogTelemetryClient` (real, wraps `posthog-node`, `host: 'https://eu.i.posthog.com'`, calls `client.capture({distinctId, event:'notify_hub_heartbeat', properties:{...props, $process_person_profile:false}})` then `await client.shutdown()`) + `NoopTelemetryClient` (used whenever disabled/no key). `src/telemetry/resolve-telemetry-enabled.ts`: pure function `isTelemetryEnabled(env)` -- true only if `env.TELEMETRY_ENABLED` is truthy AND `env.DO_NOT_TRACK` is NOT set (any value disables). `src/telemetry/build-telemetry-client.ts`: `buildTelemetryClient(env)` -- returns `NoopTelemetryClient` if disabled or `POSTHOG_API_KEY` missing/empty, else the real one constructed with `env.POSTHOG_API_KEY` (baked-in default constant as the fallback value when the env var is entirely unset -- see spec's "API key distribution" row; Richard supplies the real key value separately, out of band, NEVER hardcode a real secret string in this task -- use an empty-string placeholder constant and load the real one from `POSTHOG_API_KEY` env only for now). `FakeTelemetryClient` in `test/helpers/fakes.ts` (records calls, like every other fake).
 Unit tests: `isTelemetryEnabled` truth table (unset→false, enabled+no DNT→true, enabled+DNT→false, DNT alone without enabled→false since gate #1 already blocks); `buildTelemetryClient` returns Noop for every disable path (assert via a marker property or duck-typing, not real network); real client's payload-building function (extract `buildHeartbeatProperties({version, channelTypes, platform})` as a PURE function so the exact property shape is asserted without touching the SDK) -- empty channelTypes → `[]` not omitted.
 **Requirement**: TEL-01 · **Tests**: unit · **Gate**: quick
 **Commit**: `feat(telemetry): posthog client wrapper with opt-in gating`
 
-### T3: Boot wiring
+### T3: Boot wiring ✅
 **What**: In `src/bin/api.ts` and `src/bin/worker.ts` (or a shared boot helper both call), after the DB/repos are ready: `const channelTypes = [...new Set(channelRepo.listEnabled().map(c => c.type))]`; fire-and-forget `telemetryClient.sendHeartbeat({version: pkgVersion, channelTypesEnabled: channelTypes, platform: process.platform}).catch(() => {})` wrapped so ANY throw is swallowed and boot proceeds regardless (assert this in a test: inject a `FakeTelemetryClient` whose `sendHeartbeat` rejects, confirm the rest of boot/container wiring still completes). Read `package.json`'s version at build/runtime (existing pattern if any, else `JSON.parse(readFileSync(...))` from a known relative path -- keep it simple).
 **Requirement**: TEL-03 · **Tests**: unit/integration (boot-never-blocks) · **Gate**: full
 **Commit**: `feat(core): wire telemetry heartbeat into api and worker boot`
