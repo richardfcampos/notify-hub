@@ -84,13 +84,22 @@ accumulates history against.
 
 ## The write-only API key
 
-The `POSTHOG_API_KEY` used to send these events is a PostHog **Project API
-Key**, which is a **write-only** key by PostHog's own documented security
-model: it can submit new events to the project, but it cannot read the
-maintainer's dashboard, existing events, or any other project data. That is
-why it is safe to ship this key value in a public, open-source repository
-(the same posture PostHog itself recommends for exactly this key type, and
-the same pattern used by many other OSS projects' embedded analytics keys).
+`POSTHOG_API_KEY` (see `.env.example`) ships unset/empty in this repository
+today -- no key is baked into the codebase or embedded as a default;
+`src/telemetry/build-telemetry-client.ts` reads it from the environment
+with no fallback value. Telemetry stays a no-op until the maintainer
+supplies a real key out of band.
+
+That real key, once added, will be a PostHog **Project API Key**, which is
+a **write-only** key by PostHog's own documented security model: it can
+submit new events to the project, but it cannot read the maintainer's
+dashboard, existing events, or any other project data. This is the
+property that will make it safe to embed that key value directly in this
+public, open-source repository once it exists (the same posture PostHog
+itself recommends for exactly this key type, and the same pattern used by
+many other OSS projects' embedded analytics keys) -- there is no leak risk
+even though the repository is public, because a write-only key grants no
+read access to anyone who finds it.
 
 **Accepted trade-off, disclosed honestly**: PostHog's ingestion endpoint
 does not strictly validate that a submitted key "belongs" to the caller

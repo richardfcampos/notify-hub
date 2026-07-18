@@ -9,6 +9,12 @@
  * wrapped in try/catch: any failure (network, malformed response, SDK
  * throw) is logged and swallowed, NEVER re-thrown, so a PostHog outage can
  * never delay or crash api/worker boot.
+ *
+ * `createClient` is an optional constructor seam (defaults to the real
+ * `new PostHog(...)`) added solely so tests can inject a client whose
+ * `capture`/`shutdown` throw, to prove the try/catch above actually
+ * swallows a real-client failure -- posthog-node has no other way to
+ * simulate that without a live network. Production never passes this arg.
  */
 import { PostHog } from 'posthog-node'
 import { buildHeartbeatProperties } from './heartbeat-properties.js'
@@ -22,12 +28,24 @@ export interface PostHogTelemetryClientOptions {
   distinctId: string
 }
 
+/** The minimal subset of the posthog-node client this wrapper depends on. */
+export type PostHogClient = Pick<PostHog, 'capture' | 'shutdown'>
+
+export type PostHogClientFactory = (
+  apiKey: string,
+  options: { host: string }
+) => PostHogClient
+
 export class PostHogTelemetryClient implements TelemetryPort {
-  constructor(private readonly options: PostHogTelemetryClientOptions) {}
+  constructor(
+    private readonly options: PostHogTelemetryClientOptions,
+    private readonly createClient: PostHogClientFactory = (apiKey, opts) =>
+      new PostHog(apiKey, opts)
+  ) {}
 
   async sendHeartbeat(props: HeartbeatProperties): Promise<void> {
     try {
-      const client = new PostHog(this.options.apiKey, { host: POSTHOG_HOST })
+      const client = this.createClient(this.options.apiKey, { host: POSTHOG_HOST })
       client.capture({
         distinctId: this.options.distinctId,
         event: HEARTBEAT_EVENT,
