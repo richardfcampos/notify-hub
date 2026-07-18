@@ -146,3 +146,112 @@ Scratch = Edit mutation → run covering test → `git checkout --` revert. Tree
 **Issues found**: none blocking.
 
 **Next steps**: none — feature verified. (Nuances 1–2 are informational; no fix tasks.)
+
+---
+
+# Amendment 2 (LTTS-05) Validation — Searchable voice combobox
+
+**Date**: 2026-07-18
+**Diff range**: `40ca384..HEAD` (34d7608 `feat(admin): searchable voice combobox for local-tts`)
+**Verifier**: independent sub-agent (fresh eyes, read-only; scratch mutations reverted)
+**Scope**: LTTS-05 ACs 1–6 ONLY (LTTS-01..04 already validated above — not re-verified)
+
+---
+
+## Spec-Anchored Acceptance Criteria (LTTS-05)
+
+| Criterion (WHEN X THEN Y) | Spec-defined outcome | `file:line` + assertion | Result |
+| ------------------------- | -------------------- | ----------------------- | ------ |
+| 1. WHEN operator focuses LOCAL_TTS_VOICE THEN a text input + dropdown panel appears instead of native `<select>` | text `input` + `ul` panel below, no `<select>` | impl `admin-searchable-combobox-dom.js:33-41` (input.combobox-input + ul.combobox-panel), focus wiring `:113-116`; substitution `admin-local-tts.js:76` (createSearchableCombobox replaces old renderSelect) | ✅ impl + live (no unit assertion — DOM-wiring, project no-jsdom convention) |
+| 2. WHEN operator types THEN panel filters to voices whose name/locale/sample contains substring (case-insensitive), live | case-insensitive substring across all 3 fields | filter `admin-searchable-combobox.js:19-25`; searchText concat `admin-local-tts.js:44`; wiring `-dom.js:118-125`. Asserts: name+CI `admin-searchable-combobox.test.js:35` `toEqual([VOICES[0]])` (query `'lucIANA'`); locale `:40` (`'en_us'`→VOICES[2]); sample `:45` (`'hello there'`→VOICES[2]); concat `admin-local-tts.test.js:34` | ✅ PASS |
+| 3. WHEN operator clicks or keyboard-selects (arrows+Enter) an option THEN its exact `name` becomes the value | field value = voice.name (unchanged adapter contract) | value map `admin-local-tts.js:41` (value=voice.name), `:81-85` (onSelect→config); select `-dom.js:98-104`; Enter `-dom.js:136-141`. Asserts: resolveEnterSelection `admin-searchable-combobox.test.js:97-116`; moveHighlightIndex clamping `:66-95`; exact-name value `admin-local-tts.test.js:34-40` (Grandma full string) | ✅ PASS (helpers unit-tested; DOM select() live-verified) |
+| 4. WHEN Escape pressed or click-outside THEN panel closes without changing value | panel hidden, value unchanged (no onSelect) | Escape `-dom.js:142-144`→closePanel(resetLabel); outside `-dom.js:75-79`→docClickHandler→closePanel; closePanel restores input to currentLabel `-dom.js:86-96` (never calls onSelect) | ✅ impl + live (no unit assertion — DOM-wiring convention) |
+| 5. No new dependency — plain HTML/CSS/JS, NOT jQuery/Select2 | zero new npm dep, no CDN | `git diff 40ca384..HEAD -- package.json package-lock.json` → **empty**; combobox files import only local `./admin-dom.js`; no `<script src>`/CDN in `admin.html` | ✅ CONFIRMED |
+| 6. Player-unreachable text-input fallback (LTTS-03 AC2) unchanged | fallback branch identical to pre-amendment | `renderFallback` `admin-local-tts.js:90-96` untouched by diff (only renderSelect→renderCombobox renamed); combobox replaces ONLY the voices-available branch `:121`, not fallback `:111,:118`. buildVoiceOptions→null for unreachable/zero-voice asserted `admin-local-tts.test.js:18-29` | ✅ CONFIRMED |
+
+**Carry-over (existing value preservation)**: unmatched current voice never silently dropped — appended as manual pre-selected option `admin-local-tts.js:47-49`, asserted `admin-local-tts.test.js:54-63`; combobox shows raw value verbatim when no option matches `-dom.js:26-27`. ✅
+
+**Status**: 6/6 ACs satisfied. AC1 & AC4 are DOM-wiring behaviors covered by implementation + live Docker + code review (no unit assertion) — consistent with the plan's explicit L5 decision (no jsdom/DOM-test dependency in repo). Non-blocking.
+
+---
+
+## No New Dependency
+
+**Confirmed.** `package.json`/`package-lock.json` diff in `40ca384..HEAD` is empty. New code is plain vanilla JS/CSS composing the existing `admin-dom.js` `el`/`clear` helpers. No jQuery, no Select2, no CDN. (Spec LTTS-05 AC5 satisfied by construction.)
+
+---
+
+## Discrimination Sensor
+
+Scratch mutations in working tree, covering test run, `git checkout` revert after each; tree verified clean between each.
+
+| # | File:line | Mutation | Killed? |
+| - | --------- | -------- | ------- |
+| a | `admin-local-tts.js:44` | searchText → `${voice.name}` only (drop locale+sample) | ✅ Killed — `admin-local-tts.test.js:46` (searchText concat assertion) |
+| b | `admin-searchable-combobox.js:20,24` | filter case-sensitive (remove both `.toLowerCase()`) | ✅ Killed — `admin-searchable-combobox.test.js:35` (case-insensitive name match) |
+| c | `admin-searchable-combobox.js:22` | empty-query returns `[]` instead of all options | ✅ Killed — `:27` (empty query→all) + `:31` (whitespace→all), 2 tests |
+| d | `admin-searchable-combobox.js:19` | in-place `options.sort(...)` (input-array mutation) | ✅ Killed — full suite fails; dedicated no-mutation assertion `:59-62` kills it in isolation (proven) |
+
+**Sensor depth**: lightweight (4 targeted behavior-level mutations). **Result**: 4/4 killed.
+
+**Nuance (informational, non-blocking) — shared-fixture order-coupling in mutation (d)**: `VOICES` is a module-level const shared across all tests in the file. Under an in-place mutation, the earliest `filterOptions` call mutates it, so by the time the dedicated no-mutation test (`:59`) captures its `copy` baseline the array is already reordered — with an *idempotent* sort the second sort is a no-op and that specific test passes; the mutant is instead caught by the order-sensitive name-match test (`:35`). Run in isolation (`-t "does not mutate the input array"`), the no-mutation assertion DOES fail (`:62`), so it is genuinely discriminating. Test-hygiene smell only (freeze fixture per-test or `structuredClone`), not a coverage gap — the suite kills the mutant either way.
+
+---
+
+## Live Check
+
+- Admin container **running**: `notify-hub-admin-1` → `0.0.0.0:8081->8081`.
+- Static route serves new modules from root (`static-ui-files.ts` `/*` catch-all):
+  - `GET /admin-searchable-combobox.js` → 200, real source served.
+  - `GET /admin-searchable-combobox-dom.js` → imports `./admin-searchable-combobox.js` (`:12`) + exports `createSearchableCombobox` (`:24`).
+  - `GET /admin-local-tts.js` → imports `./admin-searchable-combobox-dom.js` (`:15`). Import chain intact end-to-end.
+- Build: `npm run build` exit 0; `build:copy-admin-ui` is whole-dir `cp -R src/admin/ui/. dist/admin/ui/` (not a per-file allowlist), so all three new files copied deterministically. (Direct `dist/` read blocked by repo's ckignore sandbox; copy verified via exit-0 + whole-directory copy semantics + source-dir file presence.)
+
+---
+
+## Gate Check
+
+- **Command**: `npm run test` (full) + `npm run build`.
+- **Result**: **407 passed, 0 failed, 0 skipped** (45 files). Re-ran green after all 4 sensor reverts. Build exit 0.
+- **Test count**: 387 (pre-amendment baseline) → **407** (+20 new: `admin-searchable-combobox.test.js` 18 + `admin-local-tts.test.js` +2 searchText). Matches tasks.md L5 claim. No decrease, no weakened assertions.
+
+---
+
+## Code Quality
+
+| Principle | Status |
+| --------- | ------ |
+| No features beyond spec (simple filter, no ranking/fuzzy) | ✅ |
+| No new dependency / abstraction bloat | ✅ (pure/DOM split mirrors admin-field-row.js precedent; each file <200 lines) |
+| Only touched files required for LTTS-05 | ✅ (combobox ×3, admin-local-tts +test, css) |
+| Matches existing patterns/style (vanilla el/clear, dark-theme tokens) | ✅ |
+| Tests map to ACs, non-shallow | ✅ (AC2/3/5/6 direct; AC1/4 DOM-live by documented convention) |
+| Spec-anchored outcome check (asserted values match spec) | ✅ |
+| No unclaimed tests | ✅ |
+
+---
+
+## Requirement Traceability Update
+
+| Requirement | Previous | New |
+| ----------- | -------- | --- |
+| LTTS-05 Searchable voice combobox (no new dependency) | Pending | ✅ Verified |
+
+---
+
+## Summary
+
+**Overall**: ✅ Ready
+
+**Spec-anchored**: 6/6 ACs satisfied (AC2/3/5/6 automated; AC1/4 impl + live + review per no-jsdom convention).
+**No new dependency**: confirmed (empty package.json/lock diff).
+**Sensor**: 4/4 mutations killed.
+**Gate**: 407 passed, build ok.
+**Live**: admin container serves all 3 new modules; import chain intact.
+**Tree**: clean (empty diff vs HEAD; only pre-existing untracked `.claude/ .mcp.json AGENTS.md CLAUDE.md`).
+
+**What works**: case-insensitive substring filter across name+locale+sample; no-new-dependency vanilla combobox; existing/unmatched voice value preserved (never silently dropped); player-unreachable plain-text fallback unchanged (combobox replaces only the voices-available branch); no input-array mutation.
+
+**Issues found**: none blocking. One informational test-hygiene nuance (shared-fixture order-coupling in the no-mutation test — mutant still killed by suite).
+
+**Next steps**: none — LTTS-05 verified.
