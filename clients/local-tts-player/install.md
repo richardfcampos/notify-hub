@@ -126,37 +126,59 @@ inline `#`-comment together with the commands (e.g. `# edit the plist ...
 SSH in some terminals. Run the comment-free commands one at a time instead;
 don't paste explanatory comments as if they were shell input.
 
-**`launchctl load` "works" but the service never actually listens** --
-`launchctl print gui/$(id -u)/com.notify-hub.local-tts-player` shows
-`state = spawn scheduled` and `last exit code = 78: EX_CONFIG` even though
-running the exact same command by hand works fine. Confirmed live on this
-project's own Intel Mac and NOT fully root-caused -- the working theory
-(unconfirmed) is a macOS privacy/TCC restriction on LaunchAgents reading
-from a volume mounted outside the boot disk (this repo lives under
-`/Volumes/External Code/...`); `log show` produced no corroborating entry.
-What's confirmed to matter:
+**`launchctl load`/`bootstrap` "works" but the service never actually
+listens** -- `launchctl print gui/$(id -u)/com.notify-hub.local-tts-player`
+shows `state = spawn scheduled` and `last exit code = 78: EX_CONFIG` (or
+the process's own stderr shows a plain `Operation not permitted` when you
+run the exact `ProgramArguments` command by hand), even though the exact
+same `node ...` command run interactively in Terminal works fine.
+
+**Root cause, confirmed** (previously undiagnosed in this doc): this is a
+macOS TCC (privacy/permissions) restriction. A process spawned by
+`launchd` does NOT inherit whatever "access this volume" permission your
+interactive Terminal session already has, and is denied when it tries to
+**read a script file located on a volume other than the boot disk** (e.g.
+an external/Thunderbolt drive mounted at `/Volumes/...`, which is exactly
+where this repo lives on the machine this was diagnosed on). It is not
+about the `node` binary's location, the port, or the plist syntax --
+those can all be perfectly correct and it still fails, because launchd
+is denied permission to even *open* the target script.
+
+**Fix**: keep the script `local-tts-server.mjs` itself OFF the external
+volume. Copy it to somewhere on the boot disk and point the LaunchAgent's
+`ProgramArguments` (and `WorkingDirectory`) at that copy instead -- the
+script has no local imports (Node stdlib only), so a plain file copy is
+safe and there is nothing else to keep in sync:
+
+```bash
+mkdir -p ~/.local-scripts
+cp clients/local-tts-player/local-tts-server.mjs \
+  ~/.local-scripts/notify-hub-local-tts-server.mjs
+```
+
+Then edit the plist's `ProgramArguments`' second string and
+`WorkingDirectory` to point at `~/.local-scripts/...` instead of the
+repo path, and reload:
+
+```bash
+launchctl bootout gui/$(id -u)/com.notify-hub.local-tts-player
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.notify-hub.local-tts-player.plist
+launchctl kickstart -k gui/$(id -u)/com.notify-hub.local-tts-player
+launchctl print gui/$(id -u)/com.notify-hub.local-tts-player | grep -E 'pid =|state ='
+curl -s 127.0.0.1:8082/voices | head -c 200
+```
+
+If your repo already lives on the boot disk (no external volume
+involved), you likely won't hit this at all -- the original `load`
+instructions above should just work.
+
+Other things confirmed to matter while diagnosing this:
 
 - A stray manually-started process already holding the port
-  (`lsof -i :8082`) makes any subsequent launchd attempt fail the same way
-  -- always `kill` old manual instances before troubleshooting further.
-- A clean `launchctl bootout gui/$(id -u)/com.notify-hub.local-tts-player`
-  followed by `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.notify-hub.local-tts-player.plist`
-  did NOT resolve it in that session.
-
-If you hit this and `launchd` genuinely won't cooperate, two working
-alternatives for persistence:
-
-1. **Fast path** (documented above) -- just run it in a terminal; restart
-   manually after reboots. Fine for a personal, always-on Mac that rarely
-   restarts.
-2. **macOS Login Item** instead of a raw LaunchAgent: System Settings →
-   General → Login Items → "+" → add a small `.command` script that `cd`s
-   into this directory and runs `node local-tts-server.mjs`. Login Items
-   run inside the full logged-in GUI session (unlike a bare LaunchAgent),
-   which sidesteps whatever restriction is at play here -- not yet verified
-   end-to-end for this project, but is the standard macOS-recommended
-   escape hatch when a LaunchAgent won't cooperate with a particular path.
-
-If you get to the bottom of the actual EX_CONFIG cause, please update this
-section -- right now it's an honest "didn't fully solve it," not a
-confirmed fix.
+  (`lsof -i :8082`) makes any subsequent launchd attempt fail the same
+  way -- always `kill` old manual instances before troubleshooting
+  further.
+- `KeepAlive: true` in the shipped plist does work correctly once the
+  TCC issue above is fixed -- killing the process (`kill -9 <pid>`)
+  gets it relaunched by launchd automatically within a couple of
+  seconds, verified live.

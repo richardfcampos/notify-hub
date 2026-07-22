@@ -316,6 +316,62 @@ up/down/restart is ever invoked). Accepted because the panel is a personal
 tool on a trusted network -- combined with the reachability note above,
 treat "who can open the panel" as "who can administer this Docker host".
 
+## Surviving a reboot (macOS)
+
+Every container in `docker-compose.yml` already sets `restart:
+unless-stopped`, but that alone isn't enough on macOS: it only reactivates
+containers once the Docker daemon comes back, and Docker Desktop itself
+doesn't always relaunch on login even when its own "start on login"
+preference is checked (its internal `settings-store.json` can say
+`AutoStart: true` while the system-level login-item registration is
+silently missing -- check with `sfltool dumpbtm | grep -i docker`). A
+forced Docker Desktop restart was also observed leaving containers in an
+`Exited (0)` state instead of auto-recovering, purely from the VM
+Desktop runs its daemon inside.
+
+`scripts/docker-autostart.sh` is the deterministic fix: it opens Docker
+Desktop, polls until the daemon actually responds, then explicitly runs
+`docker compose up -d`. Wire it to a `launchd` user agent so it runs on
+every login:
+
+```bash
+mkdir -p ~/.local-scripts
+cp scripts/docker-autostart.sh ~/.local-scripts/notify-hub-docker-autostart.sh
+chmod +x ~/.local-scripts/notify-hub-docker-autostart.sh
+```
+
+```xml
+<!-- ~/Library/LaunchAgents/com.notify-hub.docker-autostart.plist -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.notify-hub.docker-autostart</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/YOU/.local-scripts/notify-hub-docker-autostart.sh</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+</dict></plist>
+```
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.notify-hub.docker-autostart.plist
+```
+
+**If this repo lives on an external/Thunderbolt volume** (not the boot
+disk), copy `docker-autostart.sh` itself to `~/.local-scripts/` too (as
+shown above) rather than pointing the plist at the repo's own copy --
+`launchd`-spawned processes were found to get `Operation not permitted`
+reading a script located on a non-boot volume, a macOS TCC restriction
+that doesn't affect the same command run from an interactive Terminal.
+The script's own `cd` into the repo at runtime is unaffected; only the
+script's *own* file location has to be on the boot disk. The
+[local TTS player](#local-tts-your-own-speaker)'s own `launchd` setup
+hits the identical restriction -- see
+[`clients/local-tts-player/install.md`](./clients/local-tts-player/install.md#troubleshooting)
+for the same fix applied there.
+
 ## Development
 
 ```bash
