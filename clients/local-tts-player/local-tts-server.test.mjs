@@ -13,6 +13,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createRequestHandler,
+  createSpeechQueue,
   DEFAULT_VOICE,
   HOST,
   parseVoicesOutput,
@@ -186,6 +187,175 @@ describe('speak', () => {
 
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('say: command not found'))
     errorSpy.mockRestore()
+  })
+})
+
+describe('createSpeechQueue (sequential playback, spec VNR-02)', () => {
+  it('runs the first enqueued item immediately when idle, but holds a second item until the first settles (AC1)', async () => {
+    const events = []
+    let resolveFirst
+    const queue = createSpeechQueue()
+
+    queue.enqueue(() => {
+      events.push('first:start')
+      return new Promise((resolve) => {
+        resolveFirst = () => {
+          events.push('first:end')
+          resolve()
+        }
+      })
+    })
+    queue.enqueue(() => {
+      events.push('second:start')
+      return Promise.resolve()
+    })
+
+    // The queue was idle, so the first item ran synchronously already;
+    // the second must NOT have started -- it's queued behind the first.
+    expect(events).toEqual(['first:start'])
+
+    resolveFirst()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(events).toEqual(['first:start', 'first:end', 'second:start'])
+  })
+
+  it('still runs a later item after an earlier one throws synchronously (failure isolation, AC2)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const queue = createSpeechQueue()
+    let secondRan = false
+
+    queue.enqueue(() => {
+      throw new Error('say: boom')
+    })
+    queue.enqueue(() => {
+      secondRan = true
+      return Promise.resolve()
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(secondRan).toBe(true)
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('say: boom'))
+    errorSpy.mockRestore()
+  })
+
+  it('still runs a later item after an earlier one rejects asynchronously (failure isolation, AC2)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const queue = createSpeechQueue()
+    let secondRan = false
+
+    queue.enqueue(() => Promise.reject(new Error('say: async boom')))
+    queue.enqueue(() => {
+      secondRan = true
+      return Promise.resolve()
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(secondRan).toBe(true)
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('say: async boom'))
+    errorSpy.mockRestore()
+  })
+
+  it('runs three or more rapid items in strict arrival order, none dropped', async () => {
+    const order = []
+    const resolvers = []
+    const queue = createSpeechQueue()
+
+    for (const label of ['a', 'b', 'c']) {
+      queue.enqueue(
+        () =>
+          new Promise((resolve) => {
+            resolvers.push(() => {
+              order.push(label)
+              resolve()
+            })
+          })
+      )
+    }
+
+    // Only the first item's fn has run so far (queue was idle for it).
+    expect(resolvers).toHaveLength(1)
+
+    resolvers[0]()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    resolvers[1]()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(resolvers).toHaveLength(3)
+    resolvers[2]()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(order).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('speak (shared queue integration, spec VNR-02)', () => {
+  it('serializes two rapid speak() calls sharing a queue -- second say does not start until first resolves', async () => {
+    const events = []
+    let resolveFirst
+    const execFileImpl = vi.fn((command, args) => {
+      const text = args[2]
+      events.push(`start:${text}`)
+      if (text === 'first') {
+        return new Promise((resolve) => {
+          resolveFirst = () => {
+            events.push('end:first')
+            resolve({ stdout: '', stderr: '' })
+          }
+        })
+      }
+      return Promise.resolve({ stdout: '', stderr: '' })
+    })
+    const queue = createSpeechQueue()
+
+    const resultA = speak({ voice: 'Luciana', text: 'first' }, { execFileImpl, queue })
+    const resultB = speak({ voice: 'Luciana', text: 'second' }, { execFileImpl, queue })
+
+    // Both /speak calls return 202 immediately even though 'second' is
+    // still waiting behind 'first' in the queue (LTTS-01 AC3 / VNR-02 AC3).
+    expect(resultA).toEqual({ status: 202, body: { ok: true, voice: 'Luciana' } })
+    expect(resultB).toEqual({ status: 202, body: { ok: true, voice: 'Luciana' } })
+    expect(events).toEqual(['start:first'])
+    expect(execFileImpl).toHaveBeenCalledTimes(1)
+
+    resolveFirst()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(events).toEqual(['start:first', 'end:first', 'start:second'])
+    expect(execFileImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('a failing queued say does not block a later queued speak() call from still running (AC2)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const execFileImpl = vi.fn((command, args) =>
+      args[2] === 'boom'
+        ? Promise.reject(new Error('say: boom'))
+        : Promise.resolve({ stdout: '', stderr: '' })
+    )
+    const queue = createSpeechQueue()
+
+    speak({ voice: 'Luciana', text: 'boom' }, { execFileImpl, queue })
+    speak({ voice: 'Luciana', text: 'after' }, { execFileImpl, queue })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(execFileImpl).toHaveBeenNthCalledWith(2, 'say', ['-v', 'Luciana', 'after'])
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('say: boom'))
+    errorSpy.mockRestore()
+  })
+
+  it('returns 202 for every speak() call immediately regardless of how many items are already queued (AC3)', () => {
+    const execFileImpl = makeFakeExecFile({ neverResolve: true })
+    const queue = createSpeechQueue()
+
+    const resultA = speak({ voice: 'Luciana', text: 'slow' }, { execFileImpl, queue })
+    const resultB = speak({ voice: 'Luciana', text: 'queued behind it' }, { execFileImpl, queue })
+    const resultC = speak({ voice: 'Luciana', text: 'also queued' }, { execFileImpl, queue })
+
+    expect(resultA).toEqual({ status: 202, body: { ok: true, voice: 'Luciana' } })
+    expect(resultB).toEqual({ status: 202, body: { ok: true, voice: 'Luciana' } })
+    expect(resultC).toEqual({ status: 202, body: { ok: true, voice: 'Luciana' } })
   })
 })
 

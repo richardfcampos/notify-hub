@@ -89,29 +89,77 @@ function isValidSpeakBody(body) {
   return typeof body?.text === 'string' && body.text.trim().length > 0
 }
 
+function logSpeakFailure(error) {
+  console.error(`local-tts-player: say failed: ${error?.message ?? error}`)
+}
+
+/**
+ * Tiny in-process FIFO queue so two near-simultaneous `/speak` requests
+ * never play over each other (spec VNR-02 AC1). `enqueue(fn)` runs `fn`
+ * immediately when the queue is idle (a single, isolated `/speak` call
+ * behaves exactly as before -- `execFileImpl` invoked synchronously) but,
+ * when an earlier item is still in flight, holds `fn` until that item
+ * settles before starting it -- this is what stops two overlapping `say`
+ * invocations. A rejection (or synchronous throw) from one item is caught
+ * and logged rather than propagated, so a failed item never blocks items
+ * queued behind it (AC2). `enqueue` itself never returns a promise the
+ * caller needs to await -- it's fire-and-forget by design, same contract
+ * as the old direct `execFileImpl` call.
+ */
+export function createSpeechQueue() {
+  const pending = []
+  let running = false
+
+  function runNext() {
+    const fn = pending.shift()
+    if (!fn) {
+      running = false
+      return
+    }
+    running = true
+    let result
+    try {
+      result = fn()
+    } catch (error) {
+      logSpeakFailure(error)
+      runNext()
+      return
+    }
+    Promise.resolve(result).catch(logSpeakFailure).then(runNext)
+  }
+
+  function enqueue(fn) {
+    pending.push(fn)
+    if (!running) {
+      runNext()
+    }
+  }
+
+  return { enqueue }
+}
+
 /**
  * Handles a `/speak` request: invokes `say` via the injected
  * `execFileImpl` with array args (`-v <voice> <text>`, text as ONE argv
  * element -- never shell-interpolated, so injection attempts land as
- * inert literal text) and returns a `202` immediately WITHOUT awaiting
- * completion (fire-and-forget, spec LTTS-01 AC3) -- this function isn't
- * even declared `async`, so its return value is synchronous by
- * construction regardless of how long the underlying `say` call takes. An
- * unknown/empty voice falls back to `defaultVoice` (AC5). Completion and
- * failure are logged to stderr asynchronously rather than surfaced to the
- * caller.
+ * inert literal text), routed through `queue` so overlapping requests
+ * play one at a time (spec VNR-02 AC1), and returns a `202` immediately
+ * WITHOUT awaiting completion (fire-and-forget, spec LTTS-01 AC3 /
+ * VNR-02 AC3) -- this function isn't even declared `async`, so its return
+ * value is synchronous by construction regardless of how long the
+ * underlying `say` call (or the queue ahead of it) takes. An unknown/empty
+ * voice falls back to `defaultVoice` (AC5). Completion and failure are
+ * logged to stderr asynchronously rather than surfaced to the caller.
  */
-export function speak(body, { execFileImpl, defaultVoice = DEFAULT_VOICE }) {
+export function speak(body, { execFileImpl, defaultVoice = DEFAULT_VOICE, queue = createSpeechQueue() }) {
   if (!isValidSpeakBody(body)) {
     return { status: 400, body: { error: 'text is required' } }
   }
   const voice = typeof body.voice === 'string' && body.voice.trim() ? body.voice : defaultVoice
 
-  // Fire-and-forget: intentionally NOT awaited. The 202 below returns to
-  // the caller before this settles.
-  Promise.resolve(execFileImpl('say', ['-v', voice, body.text])).catch((error) => {
-    console.error(`local-tts-player: say failed: ${error?.message ?? error}`)
-  })
+  // Enqueued, not awaited: the 202 below returns to the caller before this
+  // (or anything queued ahead of it) settles.
+  queue.enqueue(() => execFileImpl('say', ['-v', voice, body.text]))
 
   return { status: 202, body: { ok: true, voice } }
 }
@@ -146,9 +194,15 @@ function sendJson(res, status, body) {
  * Builds the request handler with `execFileImpl`/`defaultVoice` injected
  * (production wires the real `execFile` + resolved `DEFAULT_VOICE`
  * env/constant; tests inject fakes -- no real HTTP server or `say` binary
- * needed).
+ * needed). One `speak` queue is created per handler instance -- shared
+ * across every `/speak` request this handler serves (so overlapping
+ * requests to the same running server serialize, spec VNR-02) but never
+ * a module-level global (each server/test gets its own, no cross-test
+ * leakage).
  */
 export function createRequestHandler({ execFileImpl, defaultVoice = DEFAULT_VOICE }) {
+  const queue = createSpeechQueue()
+
   return async function requestHandler(req, res) {
     try {
       if (req.method === 'GET' && req.url === '/voices') {
@@ -165,7 +219,7 @@ export function createRequestHandler({ execFileImpl, defaultVoice = DEFAULT_VOIC
           sendJson(res, 400, { error: 'malformed JSON body' })
           return
         }
-        const result = speak(body, { execFileImpl, defaultVoice })
+        const result = speak(body, { execFileImpl, defaultVoice, queue })
         sendJson(res, result.status, result.body)
         return
       }
