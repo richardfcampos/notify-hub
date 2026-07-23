@@ -1,7 +1,7 @@
 # Voice Notification Refinements — Tasks
 
 **Spec**: `.specs/features/voice-notification-refinements/spec.md`
-**Status**: Done, pending Verifier
+**Status**: Verifier PASS (`validation.md`), gap #1 closed (`a00797e`). Pending: live audio re-confirmation on the real Mac.
 **Scope**: Medium — 2 small, independent changes across 3 files. Design inline (documented in spec's Assumptions table).
 
 ## Execution Plan (Sequential, but independent — could run in parallel; kept sequential for a single small worker)
