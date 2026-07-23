@@ -40,6 +40,7 @@ import type {
   Notification,
   NotificationChannel
 } from '../../core/types.js'
+import { spokenSummary } from './spoken-summary.js'
 
 const VOICEMONKEY_ANNOUNCE_URL = 'https://api-v3.voicemonkey.io/announce'
 
@@ -52,7 +53,7 @@ export class VoiceMonkeyChannel implements NotificationChannel {
   ) {}
 
   async send(notification: Notification): Promise<void> {
-    const speech = `${notification.title}. ${notification.message}`
+    const speech = spokenSummary(notification)
 
     const response = await this.deps.http.request({
       method: 'POST',

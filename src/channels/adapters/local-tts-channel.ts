@@ -12,6 +12,7 @@ import type {
   Notification,
   NotificationChannel
 } from '../../core/types.js'
+import { spokenSummary } from './spoken-summary.js'
 
 export class LocalTtsChannel implements NotificationChannel {
   readonly name = 'local-tts'
@@ -22,9 +23,7 @@ export class LocalTtsChannel implements NotificationChannel {
   ) {}
 
   async send(notification: Notification): Promise<void> {
-    const text = notification.title
-      ? `${notification.title}. ${notification.message}`
-      : notification.message
+    const text = spokenSummary(notification)
 
     const response = await this.deps.http.request({
       method: 'POST',

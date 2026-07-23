@@ -1,9 +1,11 @@
 /**
- * Tests derive from spec VM-01 (.specs/features/voicemonkey-channel/spec.md):
+ * Tests derive from spec VM-01 (.specs/features/voicemonkey-channel/spec.md)
+ * plus VNR-01 (.specs/features/voice-notification-refinements/spec.md):
  * exact Announce API request via FakeHttpClient (verified endpoint/body
- * shape), non-2xx -> throws with the documented `{"error":"CODE"}` parsed
- * out, UTF-8/accented text survives, and (unlike CallMeBot) a 2xx response
- * is always treated as success since Voice Monkey's docs show no
+ * shape), `speech` = the brief spoken summary (stripped title, never the
+ * full `message`), non-2xx -> throws with the documented `{"error":"CODE"}`
+ * parsed out, UTF-8/accented text survives, and (unlike CallMeBot) a 2xx
+ * response is always treated as success since Voice Monkey's docs show no
  * "2xx-but-failed" pattern -- only real non-2xx status codes for errors.
  */
 import { describe, expect, it } from 'vitest'
@@ -20,7 +22,7 @@ function makeDeps(http: FakeHttpClient): ChannelDeps {
 }
 
 describe('VoiceMonkeyChannel', () => {
-  it('POSTs the exact Announce API request with token/device/speech', async () => {
+  it('POSTs the exact Announce API request with token/device and the stripped title as speech (VNR-01 AC1)', async () => {
     const http = new FakeHttpClient()
     http.queueResponse({ status: 200, body: '{"success":true,"data":"OK"}' })
     const channel = new VoiceMonkeyChannel(
@@ -28,7 +30,7 @@ describe('VoiceMonkeyChannel', () => {
       makeDeps(http)
     )
 
-    await channel.send({ title: 'Build finished', message: 'All tests passed' })
+    await channel.send({ title: '✅ notify-hub — concluído', message: 'Início: ... Fim: ...' })
 
     expect(http.calls).toEqual([
       {
@@ -38,10 +40,42 @@ describe('VoiceMonkeyChannel', () => {
         body: {
           token: 'tok_abc123',
           device: 'echo-kitchen',
-          speech: 'Build finished. All tests passed'
+          speech: 'notify-hub — concluído'
         }
       }
     ])
+  })
+
+  it('does not include message in the request body when a title is present', async () => {
+    const http = new FakeHttpClient()
+    http.queueResponse({ status: 200, body: '{"success":true,"data":"OK"}' })
+    const channel = new VoiceMonkeyChannel(
+      { VOICEMONKEY_TOKEN: 'tok_abc123', VOICEMONKEY_DEVICE: 'echo-kitchen' },
+      makeDeps(http)
+    )
+
+    await channel.send({ title: 'Build finished', message: 'All tests passed and more' })
+
+    const body = http.calls[0]!.body as { speech: string }
+    expect(body.speech).toBe('Build finished')
+    expect(body.speech).not.toContain('All tests passed')
+  })
+
+  it('falls back to speaking just the message (VNR-01 AC2) when the notification has no title', async () => {
+    const http = new FakeHttpClient()
+    http.queueResponse({ status: 200, body: '{"success":true,"data":"OK"}' })
+    const channel = new VoiceMonkeyChannel(
+      { VOICEMONKEY_TOKEN: 'tok_abc123', VOICEMONKEY_DEVICE: 'echo-kitchen' },
+      makeDeps(http)
+    )
+
+    await channel.send({ title: '', message: 'All tests passed' })
+
+    expect(http.calls[0]!.body).toEqual({
+      token: 'tok_abc123',
+      device: 'echo-kitchen',
+      speech: 'All tests passed'
+    })
   })
 
   it('survives UTF-8/accented characters in the spoken text', async () => {
@@ -57,7 +91,7 @@ describe('VoiceMonkeyChannel', () => {
     expect(http.calls[0]!.body).toEqual({
       token: 'tok_abc123',
       device: 'echo-kitchen',
-      speech: 'Café pronto. A reunião começou às 10h'
+      speech: 'Café pronto'
     })
   })
 
