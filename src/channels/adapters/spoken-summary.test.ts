@@ -56,4 +56,16 @@ describe('spokenSummary', () => {
       'fable — decisão necessária'
     )
   })
+
+  it('preserves a non-ASCII letter immediately after the stripped emoji (proves Unicode-aware stripping, not an ASCII class)', () => {
+    // A naive ASCII-only class (e.g. `[^a-zA-Z0-9]`) doesn't recognize "Ó" as
+    // a letter, so its greedy leading-run match would keep consuming past
+    // the emoji and eat the accented letter too, corrupting the project
+    // name. Every OTHER test in this file happens to have an ASCII-only
+    // project name right after the emoji, so none of them can tell a
+    // Unicode-aware strip apart from an ASCII one -- this one can.
+    expect(spokenSummary({ title: '✅ Ótimo projeto — concluído', message: 'm' })).toBe(
+      'Ótimo projeto — concluído'
+    )
+  })
 })
